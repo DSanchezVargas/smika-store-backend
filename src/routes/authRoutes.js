@@ -3,7 +3,10 @@ const express = require("express");
 const {
   register,
   login,
-  profile
+  profile,
+  forgotPassword,
+  resetPassword,
+  googleLogin
 } = require("../controllers/authController");
 
 const {
@@ -34,6 +37,21 @@ router.get(
   "/profile",
   protect,
   profile
+);
+
+router.post(
+  "/forgot-password",
+  forgotPassword
+);
+
+router.post(
+  "/reset-password",
+  resetPassword
+);
+
+router.post(
+  "/google",
+  googleLogin
 );
 
 module.exports = router;

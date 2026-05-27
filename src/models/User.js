@@ -20,6 +20,12 @@ const userSchema = new mongoose.Schema(
       default: ""
     },
 
+    genero: {
+      type: String,
+      enum: ["masculino", "femenino", "prefiero_no_decir", ""],
+      default: ""
+    },
+
     pais: {
       type: String,
       trim: true,
@@ -54,14 +60,45 @@ const userSchema = new mongoose.Schema(
 
     password: {
       type: String,
-      required: [true, "La contraseña es obligatoria"],
-      minlength: 6
+      default: ""
     },
 
     role: {
       type: String,
       enum: ["cliente", "admin"],
       default: "cliente"
+    },
+
+    authProvider: {
+      type: String,
+      enum: ["local", "google"],
+      default: "local"
+    },
+
+    googleId: {
+      type: String,
+      trim: true,
+      default: ""
+    },
+
+    emailVerified: {
+      type: Boolean,
+      default: false
+    },
+
+    resetPasswordCodeHash: {
+      type: String,
+      default: ""
+    },
+
+    resetPasswordExpires: {
+      type: Date,
+      default: null
+    },
+
+    resetPasswordAttempts: {
+      type: Number,
+      default: 0
     },
 
     activo: {
