@@ -1,38 +1,74 @@
 const Cart = require("../models/Cart");
 const Product = require("../models/Product");
 
-const calculateCartTotal = (items) => {
+const WHATSAPP_NUMBER = process.env.WHATSAPP_NUMBER || "51936649135";
+
+const PRODUCT_POPULATE_FIELDS =
+  "nombre slug precioReferencial precio price imagenes disponibilidad stock estado activo serie serieNombre tipoProducto evento eventoNombre categoriaNombre origenNombre personajesNombre personajeNombre";
+
+const calculateCartTotal = (items = []) => {
   return items.reduce((total, item) => {
-    return total + item.cantidad * item.precioReferencialUnitario;
+    return (
+      total +
+      Number(item.cantidad || 1) *
+        Number(item.precioReferencialUnitario || 0)
+    );
   }, 0);
 };
 
-const findActiveCart = async (sessionId) => {
+const getProductPrice = (product) => {
+  return Number(product?.precioReferencial || product?.precio || product?.price || 0);
+};
+
+const getAuthUserId = (req) => {
+  return req.user?._id || req.user?.id || req.user?.userId || "";
+};
+
+const ensureLoggedUser = (req, res) => {
+  const userId = getAuthUserId(req);
+
+  if (!req.user || !userId) {
+    res.status(401).json({
+      message: "Debes iniciar sesión para usar tu lista de pedido."
+    });
+
+    return false;
+  }
+
+  return true;
+};
+
+const findActiveCartByUser = async (userId) => {
   return await Cart.findOne({
-    sessionId,
+    usuario: userId,
     estado: "activo"
-  }).populate("items.producto", "nombre slug precioReferencial imagenes disponibilidad stock");
+  }).populate("items.producto", PRODUCT_POPULATE_FIELDS);
+};
+
+const getOrCreateUserCart = async (userId) => {
+  let cart = await findActiveCartByUser(userId);
+
+  if (!cart) {
+    await Cart.create({
+      usuario: userId,
+      sessionId: "",
+      items: [],
+      totalReferencial: 0,
+      estado: "activo"
+    });
+
+    cart = await findActiveCartByUser(userId);
+  }
+
+  return cart;
 };
 
 const getCart = async (req, res) => {
   try {
-    const { sessionId } = req.query;
+    if (!ensureLoggedUser(req, res)) return;
 
-    if (!sessionId) {
-      return res.status(400).json({
-        message: "El sessionId es obligatorio para obtener la lista"
-      });
-    }
-
-    let cart = await findActiveCart(sessionId);
-
-    if (!cart) {
-      cart = await Cart.create({
-        sessionId,
-        items: [],
-        totalReferencial: 0
-      });
-    }
+    const userId = getAuthUserId(req);
+    const cart = await getOrCreateUserCart(userId);
 
     res.json({
       message: "Lista de pedido obtenida correctamente",
@@ -48,46 +84,55 @@ const getCart = async (req, res) => {
 
 const addToCart = async (req, res) => {
   try {
-    const { sessionId, producto, cantidad } = req.body;
+    if (!ensureLoggedUser(req, res)) return;
 
-    if (!sessionId) {
+    const userId = getAuthUserId(req);
+    const { producto, cantidad } = req.body;
+
+    if (!producto) {
       return res.status(400).json({
-        message: "El sessionId es obligatorio"
+        message: "El producto es obligatorio"
       });
     }
 
     const product = await Product.findById(producto);
 
-    if (!product || !product.activo) {
+    if (!product || product.activo === false || product.estado === "Eliminado") {
       return res.status(404).json({
         message: "Producto no encontrado o no disponible"
       });
     }
 
     let cart = await Cart.findOne({
-      sessionId,
+      usuario: userId,
       estado: "activo"
     });
 
     if (!cart) {
       cart = await Cart.create({
-        sessionId,
+        usuario: userId,
+        sessionId: "",
         items: [],
-        totalReferencial: 0
+        totalReferencial: 0,
+        estado: "activo"
       });
     }
+
+    const safeQuantity = Math.max(1, Number(cantidad || 1));
+    const productPrice = getProductPrice(product);
 
     const existingItem = cart.items.find(
       (item) => item.producto.toString() === producto
     );
 
     if (existingItem) {
-      existingItem.cantidad += cantidad || 1;
+      existingItem.cantidad += safeQuantity;
+      existingItem.precioReferencialUnitario = productPrice;
     } else {
       cart.items.push({
         producto,
-        cantidad: cantidad || 1,
-        precioReferencialUnitario: product.precioReferencial
+        cantidad: safeQuantity,
+        precioReferencialUnitario: productPrice
       });
     }
 
@@ -95,7 +140,7 @@ const addToCart = async (req, res) => {
 
     await cart.save();
 
-    const updatedCart = await findActiveCart(sessionId);
+    const updatedCart = await findActiveCartByUser(userId);
 
     res.status(201).json({
       message: "Producto agregado a la lista correctamente",
@@ -111,22 +156,19 @@ const addToCart = async (req, res) => {
 
 const updateCartItem = async (req, res) => {
   try {
-    const { sessionId, producto, cantidad } = req.body;
+    if (!ensureLoggedUser(req, res)) return;
 
-    if (!sessionId) {
-      return res.status(400).json({
-        message: "El sessionId es obligatorio"
-      });
-    }
+    const userId = getAuthUserId(req);
+    const { producto, cantidad } = req.body;
 
-    if (!producto || cantidad < 1) {
+    if (!producto || Number(cantidad) < 1) {
       return res.status(400).json({
         message: "Debe enviar un producto válido y una cantidad mayor a 0"
       });
     }
 
     const cart = await Cart.findOne({
-      sessionId,
+      usuario: userId,
       estado: "activo"
     });
 
@@ -137,7 +179,7 @@ const updateCartItem = async (req, res) => {
     }
 
     const item = cart.items.find(
-      (item) => item.producto.toString() === producto
+      (cartItem) => cartItem.producto.toString() === producto
     );
 
     if (!item) {
@@ -146,12 +188,12 @@ const updateCartItem = async (req, res) => {
       });
     }
 
-    item.cantidad = cantidad;
+    item.cantidad = Math.max(1, Number(cantidad));
     cart.totalReferencial = calculateCartTotal(cart.items);
 
     await cart.save();
 
-    const updatedCart = await findActiveCart(sessionId);
+    const updatedCart = await findActiveCartByUser(userId);
 
     res.json({
       message: "Cantidad actualizada correctamente",
@@ -167,16 +209,19 @@ const updateCartItem = async (req, res) => {
 
 const removeCartItem = async (req, res) => {
   try {
-    const { sessionId, producto } = req.body;
+    if (!ensureLoggedUser(req, res)) return;
 
-    if (!sessionId) {
+    const userId = getAuthUserId(req);
+    const { producto } = req.body;
+
+    if (!producto) {
       return res.status(400).json({
-        message: "El sessionId es obligatorio"
+        message: "El producto es obligatorio"
       });
     }
 
     const cart = await Cart.findOne({
-      sessionId,
+      usuario: userId,
       estado: "activo"
     });
 
@@ -194,7 +239,7 @@ const removeCartItem = async (req, res) => {
 
     await cart.save();
 
-    const updatedCart = await findActiveCart(sessionId);
+    const updatedCart = await findActiveCartByUser(userId);
 
     res.json({
       message: "Producto eliminado de la lista correctamente",
@@ -210,22 +255,22 @@ const removeCartItem = async (req, res) => {
 
 const clearCart = async (req, res) => {
   try {
-    const { sessionId } = req.body;
+    if (!ensureLoggedUser(req, res)) return;
 
-    if (!sessionId) {
-      return res.status(400).json({
-        message: "El sessionId es obligatorio"
-      });
-    }
+    const userId = getAuthUserId(req);
 
-    const cart = await Cart.findOne({
-      sessionId,
+    let cart = await Cart.findOne({
+      usuario: userId,
       estado: "activo"
     });
 
     if (!cart) {
-      return res.status(404).json({
-        message: "Lista de pedido no encontrada"
+      cart = await Cart.create({
+        usuario: userId,
+        sessionId: "",
+        items: [],
+        totalReferencial: 0,
+        estado: "activo"
       });
     }
 
@@ -234,13 +279,106 @@ const clearCart = async (req, res) => {
 
     await cart.save();
 
+    const updatedCart = await findActiveCartByUser(userId);
+
     res.json({
       message: "Lista de pedido vaciada correctamente",
-      cart
+      cart: updatedCart
     });
   } catch (error) {
     res.status(500).json({
       message: "Error al vaciar la lista de pedido",
+      error: error.message
+    });
+  }
+};
+
+const buildWhatsAppMessage = async (req, res) => {
+  try {
+    if (!ensureLoggedUser(req, res)) return;
+
+    const userId = getAuthUserId(req);
+    const cart = await findActiveCartByUser(userId);
+
+    if (!cart || cart.items.length === 0) {
+      return res.status(400).json({
+        message: "No hay productos en la lista de pedido"
+      });
+    }
+
+    const validItems = cart.items.filter((item) => item.producto);
+
+    if (validItems.length === 0) {
+      return res.status(400).json({
+        message: "Los productos de la lista ya no están disponibles"
+      });
+    }
+
+    const productLines = validItems
+      .map((item, index) => {
+        const product = item.producto;
+        const cantidad = Number(item.cantidad || 1);
+        const precio = Number(item.precioReferencialUnitario || 0);
+        const subtotal = cantidad * precio;
+
+        return [
+          `${index + 1}. ${product?.nombre || "Producto Smika"}`,
+          product?.serieNombre ? `   Serie: ${product.serieNombre}` : "",
+          product?.tipoProducto ? `   Tipo: ${product.tipoProducto}` : "",
+          product?.eventoNombre ? `   Evento: ${product.eventoNombre}` : "",
+          product?.disponibilidad
+            ? `   Disponibilidad: ${product.disponibilidad.replace("_", " ")}`
+            : "",
+          `   Cantidad: ${cantidad}`,
+          `   Precio referencial: S/ ${precio}`,
+          `   Subtotal: S/ ${subtotal}`
+        ]
+          .filter(Boolean)
+          .join("\n");
+      })
+      .join("\n\n");
+
+    const clientName = `${req.user.nombre || req.user.name || ""} ${
+      req.user.apellido || req.user.lastName || ""
+    }`.trim();
+
+    const clientEmail = req.user.email || req.user.correo || "";
+    const clientPhone =
+      req.user.telefonoCompleto ||
+      req.user.phone ||
+      req.user.telefono ||
+      "";
+
+    const whatsappMessage = [
+      "Hola Smika Store 💖, quiero consultar sobre mi pedido.",
+      "",
+      "Datos del cliente:",
+      `Nombre: ${clientName || req.user.alias || req.user.username || "Cliente"}`,
+      clientEmail ? `Correo: ${clientEmail}` : "",
+      clientPhone ? `Teléfono: ${clientPhone}` : "",
+      "",
+      "Productos seleccionados:",
+      productLines,
+      "",
+      `Total referencial: S/ ${cart.totalReferencial}`,
+      "",
+      "Quedo atento/a a la confirmación de disponibilidad, especialmente si el producto pertenece a un evento temporal."
+    ]
+      .filter((line) => line !== "")
+      .join("\n");
+
+    const whatsappUrl = `https://wa.me/${WHATSAPP_NUMBER}?text=${encodeURIComponent(
+      whatsappMessage
+    )}`;
+
+    res.json({
+      message: "Mensaje de WhatsApp generado correctamente",
+      whatsappMessage,
+      whatsappUrl
+    });
+  } catch (error) {
+    res.status(500).json({
+      message: "Error al generar mensaje de WhatsApp",
       error: error.message
     });
   }
@@ -251,5 +389,6 @@ module.exports = {
   addToCart,
   updateCartItem,
   removeCartItem,
-  clearCart
+  clearCart,
+  buildWhatsAppMessage
 };

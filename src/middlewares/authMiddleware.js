@@ -1,16 +1,19 @@
 const jwt = require("jsonwebtoken");
 const User = require("../models/User");
 
+const getTokenFromRequest = (req) => {
+  const authorization = req.headers.authorization || "";
+
+  if (authorization.startsWith("Bearer ")) {
+    return authorization.split(" ")[1];
+  }
+
+  return "";
+};
+
 const protect = async (req, res, next) => {
   try {
-    let token;
-
-    if (
-      req.headers.authorization &&
-      req.headers.authorization.startsWith("Bearer")
-    ) {
-      token = req.headers.authorization.split(" ")[1];
-    }
+    const token = getTokenFromRequest(req);
 
     if (!token) {
       return res.status(401).json({
@@ -19,16 +22,29 @@ const protect = async (req, res, next) => {
     }
 
     const decoded = jwt.verify(token, process.env.JWT_SECRET);
+    const userId = decoded.id || decoded._id || decoded.userId;
 
-    const user = await User.findById(decoded.id).select("-password");
+    if (!userId) {
+      return res.status(401).json({
+        message: "Token inválido. No contiene usuario."
+      });
+    }
 
-    if (!user || !user.activo) {
+    const userDocument = await User.findById(userId).select("-password");
+
+    if (!userDocument || userDocument.activo === false) {
       return res.status(401).json({
         message: "Usuario no válido o inactivo."
       });
     }
 
-    req.user = user;
+    const user = userDocument.toObject();
+
+    req.user = {
+      ...user,
+      id: user._id.toString(),
+      _id: user._id
+    };
 
     next();
   } catch (error) {
@@ -39,4 +55,27 @@ const protect = async (req, res, next) => {
   }
 };
 
-module.exports = { protect };
+const authorizeRoles = (...allowedRoles) => {
+  return (req, res, next) => {
+    const role = req.user?.role || req.user?.rol;
+
+    if (!req.user) {
+      return res.status(401).json({
+        message: "No autorizado. Debes iniciar sesión."
+      });
+    }
+
+    if (!allowedRoles.includes(role)) {
+      return res.status(403).json({
+        message: "No tienes permisos para realizar esta acción."
+      });
+    }
+
+    next();
+  };
+};
+
+module.exports = {
+  protect,
+  authorizeRoles
+};

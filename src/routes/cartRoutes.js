@@ -5,25 +5,26 @@ const {
   addToCart,
   updateCartItem,
   removeCartItem,
-  clearCart
+  clearCart,
+  buildWhatsAppMessage
 } = require("../controllers/cartController");
 
 const {
-  getCartValidator,
   addToCartValidator,
   updateCartItemValidator,
-  removeCartItemValidator,
-  clearCartValidator
+  removeCartItemValidator
 } = require("../validators/cartValidator");
 
 const { validateFields } = require("../middlewares/validateMiddleware");
+const { protect } = require("../middlewares/authMiddleware");
 
 const router = express.Router();
 
-router.get("/", getCartValidator, validateFields, getCart);
+router.get("/", protect, getCart);
 
 router.post(
   "/add",
+  protect,
   addToCartValidator,
   validateFields,
   addToCart
@@ -31,6 +32,7 @@ router.post(
 
 router.put(
   "/item",
+  protect,
   updateCartItemValidator,
   validateFields,
   updateCartItem
@@ -38,6 +40,7 @@ router.put(
 
 router.delete(
   "/item",
+  protect,
   removeCartItemValidator,
   validateFields,
   removeCartItem
@@ -45,9 +48,14 @@ router.delete(
 
 router.delete(
   "/clear",
-  clearCartValidator,
-  validateFields,
+  protect,
   clearCart
+);
+
+router.post(
+  "/whatsapp",
+  protect,
+  buildWhatsAppMessage
 );
 
 module.exports = router;

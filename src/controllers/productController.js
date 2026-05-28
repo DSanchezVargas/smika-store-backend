@@ -1,9 +1,207 @@
+const mongoose = require("mongoose");
+
 const Product = require("../models/Product");
 const Notification = require("../models/Notification");
 const { createSlug } = require("../utils/slugHelper");
 const { emitSocketEvent } = require("../utils/socketHelper");
 
 const LOW_STOCK_LIMIT = 5;
+
+const isValidObjectId = (value) => {
+  return value && mongoose.Types.ObjectId.isValid(value);
+};
+
+const getOptionalObjectId = (value) => {
+  return isValidObjectId(value) ? value : null;
+};
+
+const getTextValue = (...values) => {
+  const found = values.find(
+    (value) => value !== undefined && value !== null && value !== ""
+  );
+
+  return found ? found.toString().trim() : "";
+};
+
+const getNumberValue = (...values) => {
+  const found = values.find(
+    (value) => value !== undefined && value !== null && value !== ""
+  );
+
+  return Number(found || 0);
+};
+
+const normalizeEstado = (estado = "", disponibilidad = "") => {
+  if (estado) return estado;
+
+  if (disponibilidad === "preventa") return "Preventa";
+  if (disponibilidad === "por_pedido") return "Por pedido";
+  if (disponibilidad === "agotado") return "Agotado";
+
+  return "Activo";
+};
+
+const normalizeDisponibilidad = (disponibilidad = "", estado = "") => {
+  if (disponibilidad) return disponibilidad;
+
+  const cleanEstado = estado.toString().toLowerCase();
+
+  if (cleanEstado.includes("preventa")) return "preventa";
+  if (cleanEstado.includes("pedido")) return "por_pedido";
+  if (cleanEstado.includes("agotado")) return "agotado";
+
+  return "stock";
+};
+
+const normalizeImages = (imagenes = []) => {
+  if (!Array.isArray(imagenes)) return [];
+
+  return imagenes.map((image) => {
+    if (typeof image === "string") {
+      return {
+        url: image,
+        preview: image,
+        finalPreview: image,
+        storage: image.startsWith("data:") ? "local-data-url" : "external"
+      };
+    }
+
+    const imageUrl =
+      image.url || image.finalPreview || image.preview || image.imagen || "";
+
+    return {
+      url: imageUrl,
+      preview: image.preview || imageUrl,
+      finalPreview: image.finalPreview || imageUrl,
+      publicId: image.publicId || "",
+      name: image.name || image.nombre || "",
+      originalName: image.originalName || "",
+      size: Number(image.size || 0),
+      finalSize: Number(image.finalSize || image.size || 0),
+      width: Number(image.width || 0),
+      height: Number(image.height || 0),
+      finalWidth: Number(image.finalWidth || 0),
+      finalHeight: Number(image.finalHeight || 0),
+      crop: image.crop || {
+        x: 0,
+        y: 0,
+        width: 100,
+        height: 100
+      },
+      zoom: Number(image.zoom || 1),
+      pan: image.pan || {
+        x: 0,
+        y: 0
+      },
+      storage: image.storage || (imageUrl.startsWith("data:") ? "local-data-url" : "")
+    };
+  });
+};
+
+const buildProductPayload = (body) => {
+  const disponibilidad = normalizeDisponibilidad(
+    body.disponibilidad,
+    body.estado
+  );
+
+  const estado = normalizeEstado(body.estado, disponibilidad);
+
+  const price = getNumberValue(
+    body.precioReferencial,
+    body.precio,
+    body.price
+  );
+
+  const serieNombre = getTextValue(
+    body.serieNombre,
+    body.serieTexto,
+    body.series,
+    isValidObjectId(body.serie) ? "" : body.serie
+  );
+
+  const eventoNombre = getTextValue(
+    body.eventoNombre,
+    body.eventoTexto,
+    body.event,
+    isValidObjectId(body.evento) ? "" : body.evento
+  );
+
+  const categoriaNombre = getTextValue(
+    body.categoriaNombre,
+    body.categoriaTexto,
+    isValidObjectId(body.categoria) ? "" : body.categoria
+  );
+
+  const origenNombre = getTextValue(
+    body.origenNombre,
+    body.origenTexto,
+    body.pais,
+    body.countryCode,
+    body.origen,
+    isValidObjectId(body.origen) ? "" : body.origen
+  );
+
+  const tipoProducto = getTextValue(
+    body.tipoProducto,
+    body.tipo,
+    body.type
+  );
+
+  return {
+    nombre: getTextValue(body.nombre, body.name),
+    descripcion:
+      body.descripcion ||
+      "Producto registrado desde el panel administrador de Smika Store.",
+    precioReferencial: price,
+    precio: price,
+    precioAnterior:
+      body.precioAnterior !== undefined && body.precioAnterior !== ""
+        ? Number(body.precioAnterior)
+        : null,
+    imagenes: normalizeImages(body.imagenes || []),
+
+    categoria: getOptionalObjectId(body.categoria),
+    categoriaNombre,
+    subcategoria: getOptionalObjectId(body.subcategoria),
+    subcategoriaNombre: getTextValue(body.subcategoriaNombre),
+
+    serie: getOptionalObjectId(body.serie),
+    serieNombre,
+
+    evento: getOptionalObjectId(body.evento),
+    eventoNombre,
+
+    origen: getOptionalObjectId(body.origen),
+    origenNombre,
+
+    personajes: Array.isArray(body.personajes)
+      ? body.personajes.filter(isValidObjectId)
+      : [],
+
+    personajesNombre: Array.isArray(body.personajesNombre)
+      ? body.personajesNombre
+      : [],
+
+    personajeNombre: getTextValue(body.personajeNombre, body.personaje),
+
+    marca: body.marca || "Sin marca",
+    tipoProducto,
+    material: body.material || "",
+    tamano: body.tamano || "",
+
+    disponibilidad,
+    estado,
+    stock: Number(body.stock || 0),
+    tiempoEstimado: body.tiempoEstimado || "",
+
+    adulto: Boolean(body.adulto),
+    esNuevo: body.esNuevo !== undefined ? Boolean(body.esNuevo) : true,
+    esDestacado:
+      body.esDestacado !== undefined ? Boolean(body.esDestacado) : false,
+    activo:
+      body.activo !== undefined ? Boolean(body.activo) : estado !== "Inactivo"
+  };
+};
 
 const getProductNotificationMessage = (type, product) => {
   if (type === "stock_bajo") {
@@ -34,36 +232,41 @@ const getProductNotificationMessage = (type, product) => {
 };
 
 const createProductRelatedNotifications = async (req, product, type) => {
-  const { titulo, mensaje } = getProductNotificationMessage(type, product);
+  try {
+    const { titulo, mensaje } = getProductNotificationMessage(type, product);
 
-  const baseNotification = {
-    titulo,
-    mensaje,
-    tipo: type,
-    producto: product._id,
-    serie: product.serie || null,
-    categoria: product.categoria || null,
-    evento: product.evento || null,
-    creadaPor: req.user?._id || req.user?.id || null
-  };
+    const baseNotification = {
+      titulo,
+      mensaje,
+      tipo: type,
+      producto: product._id,
+      serie: product.serie || null,
+      categoria: product.categoria || null,
+      evento: product.evento || null,
+      creadaPor: req.user?._id || req.user?.id || null
+    };
 
-  const notifications = await Notification.insertMany([
-    {
-      ...baseNotification,
-      destinatarioTipo: "por_lista_deseos"
-    },
-    {
-      ...baseNotification,
-      destinatarioTipo: "por_preferencias"
-    }
-  ]);
+    const notifications = await Notification.insertMany([
+      {
+        ...baseNotification,
+        destinatarioTipo: "por_lista_deseos"
+      },
+      {
+        ...baseNotification,
+        destinatarioTipo: "por_preferencias"
+      }
+    ]);
 
-  emitSocketEvent(req, "notification_created", {
-    message: "Notificaciones de producto creadas",
-    notifications
-  });
+    emitSocketEvent(req, "notification_created", {
+      message: "Notificaciones de producto creadas",
+      notifications
+    });
 
-  return notifications;
+    return notifications;
+  } catch (error) {
+    console.log("No se pudo crear notificación de producto:", error.message);
+    return null;
+  }
 };
 
 const detectStockNotificationType = (
@@ -104,28 +307,50 @@ const detectStockNotificationType = (
 };
 
 const createNewProductNotification = async (req, product) => {
-  if (!product.esNuevo && !product.esDestacado) {
+  try {
+    if (!product.esNuevo && !product.esDestacado) {
+      return null;
+    }
+
+    const notification = await Notification.create({
+      titulo: "Nuevo producto disponible",
+      mensaje: `Smika Store agregó el producto "${product.nombre}".`,
+      tipo: "novedad",
+      destinatarioTipo: "por_preferencias",
+      producto: product._id,
+      serie: product.serie || null,
+      categoria: product.categoria || null,
+      evento: product.evento || null,
+      creadaPor: req.user?._id || req.user?.id || null
+    });
+
+    emitSocketEvent(req, "notification_created", {
+      message: "Notificación de nuevo producto creada",
+      notification
+    });
+
+    return notification;
+  } catch (error) {
+    console.log("No se pudo crear notificación de nuevo producto:", error.message);
     return null;
   }
+};
 
-  const notification = await Notification.create({
-    titulo: "Nuevo producto disponible",
-    mensaje: `Smika Store agregó el producto "${product.nombre}".`,
-    tipo: "novedad",
-    destinatarioTipo: "por_preferencias",
-    producto: product._id,
-    serie: product.serie || null,
-    categoria: product.categoria || null,
-    evento: product.evento || null,
-    creadaPor: req.user?._id || req.user?.id || null
-  });
-
-  emitSocketEvent(req, "notification_created", {
-    message: "Notificación de nuevo producto creada",
-    notification
-  });
-
-  return notification;
+const populateProduct = (query) => {
+  return query
+    .populate("categoria", "nombre slug")
+    .populate("subcategoria", "nombre slug")
+    .populate({
+      path: "serie",
+      select: "nombre slug creadores pais",
+      populate: {
+        path: "creadores",
+        select: "nombre slug tipo"
+      }
+    })
+    .populate("evento", "titulo nombre slug")
+    .populate("origen", "nombre slug code")
+    .populate("personajes", "nombre slug tipo");
 };
 
 const getProducts = async (req, res) => {
@@ -138,6 +363,7 @@ const getProducts = async (req, res) => {
       evento,
       origen,
       disponibilidad,
+      estado,
       esNuevo,
       esDestacado,
       activos
@@ -153,30 +379,39 @@ const getProducts = async (req, res) => {
       filter.nombre = { $regex: search, $options: "i" };
     }
 
-    if (categoria) filter.categoria = categoria;
-    if (subcategoria) filter.subcategoria = subcategoria;
-    if (serie) filter.serie = serie;
-    if (evento) filter.evento = evento;
-    if (origen) filter.origen = origen;
+    if (categoria) {
+      if (isValidObjectId(categoria)) filter.categoria = categoria;
+      else filter.categoriaNombre = { $regex: categoria, $options: "i" };
+    }
+
+    if (subcategoria) {
+      if (isValidObjectId(subcategoria)) filter.subcategoria = subcategoria;
+      else filter.subcategoriaNombre = { $regex: subcategoria, $options: "i" };
+    }
+
+    if (serie) {
+      if (isValidObjectId(serie)) filter.serie = serie;
+      else filter.serieNombre = { $regex: serie, $options: "i" };
+    }
+
+    if (evento) {
+      if (isValidObjectId(evento)) filter.evento = evento;
+      else filter.eventoNombre = { $regex: evento, $options: "i" };
+    }
+
+    if (origen) {
+      if (isValidObjectId(origen)) filter.origen = origen;
+      else filter.origenNombre = { $regex: origen, $options: "i" };
+    }
+
     if (disponibilidad) filter.disponibilidad = disponibilidad;
+    if (estado) filter.estado = estado;
     if (esNuevo !== undefined) filter.esNuevo = esNuevo === "true";
     if (esDestacado !== undefined) filter.esDestacado = esDestacado === "true";
 
-    const products = await Product.find(filter)
-      .populate("categoria", "nombre slug")
-      .populate("subcategoria", "nombre slug")
-      .populate({
-        path: "serie",
-        select: "nombre slug creadores",
-        populate: {
-          path: "creadores",
-          select: "nombre slug tipo"
-        }
-      })
-      .populate("evento", "titulo slug")
-      .populate("origen", "nombre slug")
-      .populate("personajes", "nombre slug tipo")
-      .sort({ createdAt: -1 });
+    const products = await populateProduct(
+      Product.find(filter).sort({ createdAt: -1 })
+    );
 
     res.json({
       message: "Lista de productos obtenida correctamente",
@@ -193,20 +428,11 @@ const getProducts = async (req, res) => {
 
 const getProductById = async (req, res) => {
   try {
-    const product = await Product.findById(req.params.id)
-      .populate("categoria", "nombre slug")
-      .populate("subcategoria", "nombre slug")
-      .populate({
-        path: "serie",
-        select: "nombre slug creadores",
-        populate: {
-          path: "creadores",
-          select: "nombre slug tipo"
-        }
-      })
-      .populate("evento", "titulo slug")
-      .populate("origen", "nombre slug")
-      .populate("personajes", "nombre slug tipo");
+    const query = isValidObjectId(req.params.id)
+      ? { _id: req.params.id }
+      : { slug: req.params.id };
+
+    const product = await populateProduct(Product.findOne(query));
 
     if (!product) {
       return res.status(404).json({
@@ -228,28 +454,9 @@ const getProductById = async (req, res) => {
 
 const createProduct = async (req, res) => {
   try {
-    const {
-      nombre,
-      descripcion,
-      precioReferencial,
-      precioAnterior,
-      imagenes,
-      categoria,
-      subcategoria,
-      serie,
-      evento,
-      origen,
-      personajes,
-      marca,
-      tipoProducto,
-      disponibilidad,
-      stock,
-      tiempoEstimado,
-      esNuevo,
-      esDestacado
-    } = req.body;
+    const payload = buildProductPayload(req.body);
 
-    const slug = createSlug(nombre);
+    const slug = createSlug(payload.nombre);
 
     const productExists = await Product.findOne({ slug });
 
@@ -260,25 +467,8 @@ const createProduct = async (req, res) => {
     }
 
     const product = await Product.create({
-      nombre,
-      slug,
-      descripcion,
-      precioReferencial,
-      precioAnterior: precioAnterior || null,
-      imagenes: imagenes || [],
-      categoria,
-      subcategoria: subcategoria || null,
-      serie,
-      evento: evento || null,
-      origen,
-      personajes: personajes || [],
-      marca,
-      tipoProducto,
-      disponibilidad,
-      stock,
-      tiempoEstimado,
-      esNuevo,
-      esDestacado
+      ...payload,
+      slug
     });
 
     await createNewProductNotification(req, product);
@@ -288,9 +478,11 @@ const createProduct = async (req, res) => {
       product
     });
 
+    const populatedProduct = await populateProduct(Product.findById(product._id));
+
     res.status(201).json({
       message: "Producto creado correctamente",
-      product
+      product: populatedProduct
     });
   } catch (error) {
     res.status(500).json({
@@ -302,27 +494,7 @@ const createProduct = async (req, res) => {
 
 const updateProduct = async (req, res) => {
   try {
-    const {
-      nombre,
-      descripcion,
-      precioReferencial,
-      precioAnterior,
-      imagenes,
-      categoria,
-      subcategoria,
-      serie,
-      evento,
-      origen,
-      personajes,
-      marca,
-      tipoProducto,
-      disponibilidad,
-      stock,
-      tiempoEstimado,
-      esNuevo,
-      esDestacado,
-      activo
-    } = req.body;
+    const payload = buildProductPayload(req.body);
 
     const product = await Product.findById(req.params.id);
 
@@ -335,8 +507,8 @@ const updateProduct = async (req, res) => {
     const previousStock = product.stock;
     const previousDisponibilidad = product.disponibilidad;
 
-    if (nombre) {
-      const slug = createSlug(nombre);
+    if (payload.nombre) {
+      const slug = createSlug(payload.nombre);
 
       const duplicatedProduct = await Product.findOne({
         slug,
@@ -349,28 +521,15 @@ const updateProduct = async (req, res) => {
         });
       }
 
-      product.nombre = nombre;
+      product.nombre = payload.nombre;
       product.slug = slug;
     }
 
-    if (descripcion !== undefined) product.descripcion = descripcion;
-    if (precioReferencial !== undefined) product.precioReferencial = precioReferencial;
-    if (precioAnterior !== undefined) product.precioAnterior = precioAnterior || null;
-    if (imagenes !== undefined) product.imagenes = imagenes;
-    if (categoria !== undefined) product.categoria = categoria;
-    if (subcategoria !== undefined) product.subcategoria = subcategoria || null;
-    if (serie !== undefined) product.serie = serie;
-    if (evento !== undefined) product.evento = evento || null;
-    if (origen !== undefined) product.origen = origen;
-    if (personajes !== undefined) product.personajes = personajes;
-    if (marca !== undefined) product.marca = marca;
-    if (tipoProducto !== undefined) product.tipoProducto = tipoProducto;
-    if (disponibilidad !== undefined) product.disponibilidad = disponibilidad;
-    if (stock !== undefined) product.stock = stock;
-    if (tiempoEstimado !== undefined) product.tiempoEstimado = tiempoEstimado;
-    if (esNuevo !== undefined) product.esNuevo = esNuevo;
-    if (esDestacado !== undefined) product.esDestacado = esDestacado;
-    if (activo !== undefined) product.activo = activo;
+    Object.entries(payload).forEach(([key, value]) => {
+      if (key !== "nombre" && value !== undefined) {
+        product[key] = value;
+      }
+    });
 
     await product.save();
 
@@ -389,9 +548,11 @@ const updateProduct = async (req, res) => {
       product
     });
 
+    const populatedProduct = await populateProduct(Product.findById(product._id));
+
     res.json({
       message: "Producto actualizado correctamente",
-      product
+      product: populatedProduct
     });
   } catch (error) {
     res.status(500).json({
@@ -412,6 +573,8 @@ const deleteProduct = async (req, res) => {
     }
 
     product.activo = false;
+    product.estado = "Inactivo";
+
     await product.save();
 
     emitSocketEvent(req, "product_deleted", {

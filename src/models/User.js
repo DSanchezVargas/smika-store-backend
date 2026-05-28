@@ -63,11 +63,11 @@ const userSchema = new mongoose.Schema(
       default: ""
     },
 
-    role: {
-      type: String,
-      enum: ["cliente", "admin"],
-      default: "cliente"
-    },
+   role: {
+  type: String,
+  enum: ["cliente", "admin", "subadmin"],
+  default: "cliente"
+},
 
     authProvider: {
       type: String,

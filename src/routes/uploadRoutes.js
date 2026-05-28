@@ -14,7 +14,7 @@ const router = express.Router();
 router.post(
   "/single",
   protect,
-  authorizeRoles("admin"),
+  authorizeRoles("admin", "subadmin"),
   upload.single("image"),
   uploadSingleImage
 );
@@ -22,7 +22,7 @@ router.post(
 router.post(
   "/multiple",
   protect,
-  authorizeRoles("admin"),
+  authorizeRoles("admin", "subadmin"),
   upload.array("images", 10),
   uploadMultipleImages
 );

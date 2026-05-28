@@ -1,16 +1,6 @@
-const { body, query } = require("express-validator");
-
-const getCartValidator = [
-  query("sessionId")
-    .notEmpty()
-    .withMessage("El sessionId es obligatorio")
-];
+const { body } = require("express-validator");
 
 const addToCartValidator = [
-  body("sessionId")
-    .notEmpty()
-    .withMessage("El sessionId es obligatorio"),
-
   body("producto")
     .notEmpty()
     .withMessage("El producto es obligatorio")
@@ -24,10 +14,6 @@ const addToCartValidator = [
 ];
 
 const updateCartItemValidator = [
-  body("sessionId")
-    .notEmpty()
-    .withMessage("El sessionId es obligatorio"),
-
   body("producto")
     .notEmpty()
     .withMessage("El producto es obligatorio")
@@ -42,10 +28,6 @@ const updateCartItemValidator = [
 ];
 
 const removeCartItemValidator = [
-  body("sessionId")
-    .notEmpty()
-    .withMessage("El sessionId es obligatorio"),
-
   body("producto")
     .notEmpty()
     .withMessage("El producto es obligatorio")
@@ -53,16 +35,8 @@ const removeCartItemValidator = [
     .withMessage("El producto debe ser un ID válido")
 ];
 
-const clearCartValidator = [
-  body("sessionId")
-    .notEmpty()
-    .withMessage("El sessionId es obligatorio")
-];
-
 module.exports = {
-  getCartValidator,
   addToCartValidator,
   updateCartItemValidator,
-  removeCartItemValidator,
-  clearCartValidator
+  removeCartItemValidator
 };

@@ -25,7 +25,7 @@ router.get("/:id", getProductById);
 router.post(
   "/",
   protect,
-  authorizeRoles("admin"),
+  authorizeRoles("admin", "subadmin"),
   createProductValidator,
   validateFields,
   createProduct
@@ -34,7 +34,7 @@ router.post(
 router.put(
   "/:id",
   protect,
-  authorizeRoles("admin"),
+  authorizeRoles("admin", "subadmin"),
   updateProductValidator,
   validateFields,
   updateProduct
@@ -43,7 +43,7 @@ router.put(
 router.delete(
   "/:id",
   protect,
-  authorizeRoles("admin"),
+  authorizeRoles("admin", "subadmin"),
   deleteProduct
 );
 

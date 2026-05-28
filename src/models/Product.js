@@ -1,5 +1,113 @@
 const mongoose = require("mongoose");
 
+const imageSchema = new mongoose.Schema(
+  {
+    url: {
+      type: String,
+      default: ""
+    },
+
+    preview: {
+      type: String,
+      default: ""
+    },
+
+    finalPreview: {
+      type: String,
+      default: ""
+    },
+
+    publicId: {
+      type: String,
+      default: ""
+    },
+
+    name: {
+      type: String,
+      default: ""
+    },
+
+    originalName: {
+      type: String,
+      default: ""
+    },
+
+    size: {
+      type: Number,
+      default: 0
+    },
+
+    finalSize: {
+      type: Number,
+      default: 0
+    },
+
+    width: {
+      type: Number,
+      default: 0
+    },
+
+    height: {
+      type: Number,
+      default: 0
+    },
+
+    finalWidth: {
+      type: Number,
+      default: 0
+    },
+
+    finalHeight: {
+      type: Number,
+      default: 0
+    },
+
+    crop: {
+      x: {
+        type: Number,
+        default: 0
+      },
+      y: {
+        type: Number,
+        default: 0
+      },
+      width: {
+        type: Number,
+        default: 100
+      },
+      height: {
+        type: Number,
+        default: 100
+      }
+    },
+
+    zoom: {
+      type: Number,
+      default: 1
+    },
+
+    pan: {
+      x: {
+        type: Number,
+        default: 0
+      },
+      y: {
+        type: Number,
+        default: 0
+      }
+    },
+
+    storage: {
+      type: String,
+      enum: ["local-data-url", "uploads", "cloudinary", "external", ""],
+      default: ""
+    }
+  },
+  {
+    _id: false
+  }
+);
+
 const productSchema = new mongoose.Schema(
   {
     nombre: {
@@ -18,8 +126,8 @@ const productSchema = new mongoose.Schema(
 
     descripcion: {
       type: String,
-      required: [true, "La descripción del producto es obligatoria"],
-      trim: true
+      trim: true,
+      default: ""
     },
 
     precioReferencial: {
@@ -28,20 +136,32 @@ const productSchema = new mongoose.Schema(
       min: [0, "El precio no puede ser negativo"]
     },
 
+    precio: {
+      type: Number,
+      min: [0, "El precio no puede ser negativo"],
+      default: 0
+    },
+
     precioAnterior: {
       type: Number,
       default: null
     },
 
     imagenes: {
-      type: [String],
+      type: [imageSchema],
       default: []
     },
 
     categoria: {
       type: mongoose.Schema.Types.ObjectId,
       ref: "Category",
-      required: [true, "La categoría es obligatoria"]
+      default: null
+    },
+
+    categoriaNombre: {
+      type: String,
+      trim: true,
+      default: ""
     },
 
     subcategoria: {
@@ -50,10 +170,22 @@ const productSchema = new mongoose.Schema(
       default: null
     },
 
+    subcategoriaNombre: {
+      type: String,
+      trim: true,
+      default: ""
+    },
+
     serie: {
       type: mongoose.Schema.Types.ObjectId,
       ref: "Series",
-      required: [true, "La serie del producto es obligatoria"]
+      default: null
+    },
+
+    serieNombre: {
+      type: String,
+      trim: true,
+      default: ""
     },
 
     evento: {
@@ -62,10 +194,22 @@ const productSchema = new mongoose.Schema(
       default: null
     },
 
+    eventoNombre: {
+      type: String,
+      trim: true,
+      default: ""
+    },
+
     origen: {
       type: mongoose.Schema.Types.ObjectId,
       ref: "Origin",
-      required: [true, "El país u origen del producto es obligatorio"]
+      default: null
+    },
+
+    origenNombre: {
+      type: String,
+      trim: true,
+      default: ""
     },
 
     personajes: [
@@ -74,6 +218,17 @@ const productSchema = new mongoose.Schema(
         ref: "Character"
       }
     ],
+
+    personajesNombre: {
+      type: [String],
+      default: []
+    },
+
+    personajeNombre: {
+      type: String,
+      trim: true,
+      default: ""
+    },
 
     marca: {
       type: String,
@@ -87,10 +242,28 @@ const productSchema = new mongoose.Schema(
       trim: true
     },
 
+    material: {
+      type: String,
+      trim: true,
+      default: ""
+    },
+
+    tamano: {
+      type: String,
+      trim: true,
+      default: ""
+    },
+
     disponibilidad: {
       type: String,
       enum: ["stock", "preventa", "por_pedido", "agotado"],
       default: "stock"
+    },
+
+    estado: {
+      type: String,
+      enum: ["Activo", "Preventa", "Por pedido", "Agotado", "Inactivo"],
+      default: "Activo"
     },
 
     stock: {
@@ -105,9 +278,14 @@ const productSchema = new mongoose.Schema(
       default: ""
     },
 
-    esNuevo: {
+    adulto: {
       type: Boolean,
       default: false
+    },
+
+    esNuevo: {
+      type: Boolean,
+      default: true
     },
 
     esDestacado: {
@@ -124,5 +302,25 @@ const productSchema = new mongoose.Schema(
     timestamps: true
   }
 );
+
+productSchema.virtual("serieTexto").get(function () {
+  return this.serieNombre;
+});
+
+productSchema.virtual("eventoTexto").get(function () {
+  return this.eventoNombre;
+});
+
+productSchema.virtual("origenTexto").get(function () {
+  return this.origenNombre;
+});
+
+productSchema.set("toJSON", {
+  virtuals: true
+});
+
+productSchema.set("toObject", {
+  virtuals: true
+});
 
 module.exports = mongoose.model("Product", productSchema);
