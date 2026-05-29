@@ -4,7 +4,22 @@ const Product = require("../models/Product");
 const WHATSAPP_NUMBER = process.env.WHATSAPP_NUMBER || "51936649135";
 
 const PRODUCT_POPULATE_FIELDS =
-  "nombre slug precioReferencial precio price imagenes disponibilidad stock estado activo serie serieNombre tipoProducto evento eventoNombre categoriaNombre origenNombre personajesNombre personajeNombre";
+  "nombre slug precioReferencial precio price imagenes disponibilidad stock estado activo serie serieNombre tipoProducto evento eventoNombre categoriaNombre origenNombre personajesNombre personajeNombre tiempoEstimado";
+
+const isAvailabilityByConfirmation = (product) => {
+  const stock = Number(product?.stock || 0);
+  const tiempoEstimado = (product?.tiempoEstimado || "").trim();
+
+  return stock <= 0 && Boolean(tiempoEstimado);
+};
+
+const getAvailabilityText = (product) => {
+  const tiempoEstimado = (product?.tiempoEstimado || "").trim();
+
+  if (tiempoEstimado) return tiempoEstimado;
+
+  return "Disponibilidad por confirmar con Smika Store 💖";
+};
 
 const calculateCartTotal = (items = []) => {
   return items.reduce((total, item) => {
@@ -17,7 +32,9 @@ const calculateCartTotal = (items = []) => {
 };
 
 const getProductPrice = (product) => {
-  return Number(product?.precioReferencial || product?.precio || product?.price || 0);
+  return Number(
+    product?.precioReferencial || product?.precio || product?.price || 0
+  );
 };
 
 const getAuthUserId = (req) => {
@@ -320,18 +337,25 @@ const buildWhatsAppMessage = async (req, res) => {
         const cantidad = Number(item.cantidad || 1);
         const precio = Number(item.precioReferencialUnitario || 0);
         const subtotal = cantidad * precio;
+        const requiresConfirmation = isAvailabilityByConfirmation(product);
 
         return [
           `${index + 1}. ${product?.nombre || "Producto Smika"}`,
           product?.serieNombre ? `   Serie: ${product.serieNombre}` : "",
           product?.tipoProducto ? `   Tipo: ${product.tipoProducto}` : "",
           product?.eventoNombre ? `   Evento: ${product.eventoNombre}` : "",
-          product?.disponibilidad
+          requiresConfirmation
+            ? `   Disponibilidad: ${getAvailabilityText(product)}`
+            : product?.disponibilidad
             ? `   Disponibilidad: ${product.disponibilidad.replace("_", " ")}`
             : "",
-          `   Cantidad: ${cantidad}`,
+          requiresConfirmation
+            ? "   Cantidad: Consultar disponibilidad"
+            : `   Cantidad: ${cantidad}`,
           `   Precio referencial: S/ ${precio}`,
-          `   Subtotal: S/ ${subtotal}`
+          requiresConfirmation
+            ? `   Subtotal referencial: S/ ${precio}`
+            : `   Subtotal: S/ ${subtotal}`
         ]
           .filter(Boolean)
           .join("\n");
@@ -362,7 +386,7 @@ const buildWhatsAppMessage = async (req, res) => {
       "",
       `Total referencial: S/ ${cart.totalReferencial}`,
       "",
-      "Quedo atento/a a la confirmación de disponibilidad, especialmente si el producto pertenece a un evento temporal."
+      "Quedo atento/a a la confirmación de disponibilidad y coordinación del pedido."
     ]
       .filter((line) => line !== "")
       .join("\n");
