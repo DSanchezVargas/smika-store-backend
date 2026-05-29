@@ -6,11 +6,18 @@ const WHATSAPP_NUMBER = process.env.WHATSAPP_NUMBER || "51936649135";
 const PRODUCT_POPULATE_FIELDS =
   "nombre slug precioReferencial precio price imagenes disponibilidad stock estado activo serie serieNombre tipoProducto evento eventoNombre categoriaNombre origenNombre personajesNombre personajeNombre tiempoEstimado";
 
+const getProductId = (product) => {
+  return product?._id || product?.id || product || "";
+};
+
 const isAvailabilityByConfirmation = (product) => {
+  if (!product || typeof product !== "object") return false;
+
   const stock = Number(product?.stock || 0);
   const tiempoEstimado = (product?.tiempoEstimado || "").trim();
+  const disponibilidad = (product?.disponibilidad || "").toString();
 
-  return stock <= 0 && Boolean(tiempoEstimado);
+  return stock <= 0 && (Boolean(tiempoEstimado) || disponibilidad === "por_pedido");
 };
 
 const getAvailabilityText = (product) => {
@@ -21,20 +28,50 @@ const getAvailabilityText = (product) => {
   return "Disponibilidad por confirmar con Smika Store 💖";
 };
 
-const calculateCartTotal = (items = []) => {
-  return items.reduce((total, item) => {
-    return (
-      total +
-      Number(item.cantidad || 1) *
-        Number(item.precioReferencialUnitario || 0)
-    );
-  }, 0);
-};
-
 const getProductPrice = (product) => {
   return Number(
     product?.precioReferencial || product?.precio || product?.price || 0
   );
+};
+
+const formatMoney = (value) => {
+  return Number(value || 0).toLocaleString("es-PE", {
+    minimumFractionDigits: 0,
+    maximumFractionDigits: 2
+  });
+};
+
+const getItemProductId = (item) => {
+  return getProductId(item?.producto);
+};
+
+const getCartItemSubtotal = (item) => {
+  const product = item?.producto;
+  const price = Number(item?.precioReferencialUnitario || getProductPrice(product));
+
+  if (isAvailabilityByConfirmation(product)) {
+    return price;
+  }
+
+  return Number(item?.cantidad || 1) * price;
+};
+
+const calculateCartTotal = (items = []) => {
+  return items.reduce((total, item) => total + getCartItemSubtotal(item), 0);
+};
+
+const normalizeCartItemsForAvailability = (cart) => {
+  if (!cart || !Array.isArray(cart.items)) return cart;
+
+  cart.items.forEach((item) => {
+    if (isAvailabilityByConfirmation(item.producto)) {
+      item.cantidad = 1;
+    }
+  });
+
+  cart.totalReferencial = calculateCartTotal(cart.items);
+
+  return cart;
 };
 
 const getAuthUserId = (req) => {
@@ -62,8 +99,41 @@ const findActiveCartByUser = async (userId) => {
   }).populate("items.producto", PRODUCT_POPULATE_FIELDS);
 };
 
+const saveNormalizedPopulatedCart = async (cart) => {
+  if (!cart) return null;
+
+  normalizeCartItemsForAvailability(cart);
+
+  const normalizedItems = cart.items.map((item) => ({
+    producto: getItemProductId(item),
+    cantidad: Number(item.cantidad || 1),
+    precioReferencialUnitario: Number(item.precioReferencialUnitario || 0)
+  }));
+
+  await Cart.findByIdAndUpdate(
+    cart._id,
+    {
+      items: normalizedItems,
+      totalReferencial: Number(cart.totalReferencial || 0)
+    },
+    {
+      runValidators: true
+    }
+  );
+
+  return await findActiveCartByUser(cart.usuario);
+};
+
+const syncAndReturnCartByUser = async (userId) => {
+  const cart = await findActiveCartByUser(userId);
+
+  if (!cart) return null;
+
+  return await saveNormalizedPopulatedCart(cart);
+};
+
 const getOrCreateUserCart = async (userId) => {
-  let cart = await findActiveCartByUser(userId);
+  let cart = await syncAndReturnCartByUser(userId);
 
   if (!cart) {
     await Cart.create({
@@ -74,7 +144,7 @@ const getOrCreateUserCart = async (userId) => {
       estado: "activo"
     });
 
-    cart = await findActiveCartByUser(userId);
+    cart = await syncAndReturnCartByUser(userId);
   }
 
   return cart;
@@ -120,6 +190,8 @@ const addToCart = async (req, res) => {
       });
     }
 
+    const requiresConfirmation = isAvailabilityByConfirmation(product);
+
     let cart = await Cart.findOne({
       usuario: userId,
       estado: "activo"
@@ -135,7 +207,10 @@ const addToCart = async (req, res) => {
       });
     }
 
-    const safeQuantity = Math.max(1, Number(cantidad || 1));
+    const safeQuantity = requiresConfirmation
+      ? 1
+      : Math.max(1, Number(cantidad || 1));
+
     const productPrice = getProductPrice(product);
 
     const existingItem = cart.items.find(
@@ -143,8 +218,13 @@ const addToCart = async (req, res) => {
     );
 
     if (existingItem) {
-      existingItem.cantidad += safeQuantity;
       existingItem.precioReferencialUnitario = productPrice;
+
+      if (requiresConfirmation) {
+        existingItem.cantidad = 1;
+      } else {
+        existingItem.cantidad += safeQuantity;
+      }
     } else {
       cart.items.push({
         producto,
@@ -153,14 +233,14 @@ const addToCart = async (req, res) => {
       });
     }
 
-    cart.totalReferencial = calculateCartTotal(cart.items);
-
     await cart.save();
 
-    const updatedCart = await findActiveCartByUser(userId);
+    const updatedCart = await syncAndReturnCartByUser(userId);
 
     res.status(201).json({
-      message: "Producto agregado a la lista correctamente",
+      message: requiresConfirmation
+        ? "Producto agregado para consultar disponibilidad"
+        : "Producto agregado a la lista correctamente",
       cart: updatedCart
     });
   } catch (error) {
@@ -178,9 +258,25 @@ const updateCartItem = async (req, res) => {
     const userId = getAuthUserId(req);
     const { producto, cantidad } = req.body;
 
-    if (!producto || Number(cantidad) < 1) {
+    if (!producto) {
       return res.status(400).json({
-        message: "Debe enviar un producto válido y una cantidad mayor a 0"
+        message: "Debe enviar un producto válido"
+      });
+    }
+
+    const product = await Product.findById(producto);
+
+    if (!product || product.activo === false) {
+      return res.status(404).json({
+        message: "Producto no encontrado o no disponible"
+      });
+    }
+
+    const requiresConfirmation = isAvailabilityByConfirmation(product);
+
+    if (!requiresConfirmation && Number(cantidad) < 1) {
+      return res.status(400).json({
+        message: "La cantidad debe ser mayor a 0"
       });
     }
 
@@ -205,15 +301,17 @@ const updateCartItem = async (req, res) => {
       });
     }
 
-    item.cantidad = Math.max(1, Number(cantidad));
-    cart.totalReferencial = calculateCartTotal(cart.items);
+    item.precioReferencialUnitario = getProductPrice(product);
+    item.cantidad = requiresConfirmation ? 1 : Math.max(1, Number(cantidad));
 
     await cart.save();
 
-    const updatedCart = await findActiveCartByUser(userId);
+    const updatedCart = await syncAndReturnCartByUser(userId);
 
     res.json({
-      message: "Cantidad actualizada correctamente",
+      message: requiresConfirmation
+        ? "Este producto se mantiene como consulta de disponibilidad"
+        : "Cantidad actualizada correctamente",
       cart: updatedCart
     });
   } catch (error) {
@@ -252,11 +350,9 @@ const removeCartItem = async (req, res) => {
       (item) => item.producto.toString() !== producto
     );
 
-    cart.totalReferencial = calculateCartTotal(cart.items);
-
     await cart.save();
 
-    const updatedCart = await findActiveCartByUser(userId);
+    const updatedCart = await syncAndReturnCartByUser(userId);
 
     res.json({
       message: "Producto eliminado de la lista correctamente",
@@ -296,7 +392,7 @@ const clearCart = async (req, res) => {
 
     await cart.save();
 
-    const updatedCart = await findActiveCartByUser(userId);
+    const updatedCart = await syncAndReturnCartByUser(userId);
 
     res.json({
       message: "Lista de pedido vaciada correctamente",
@@ -315,7 +411,7 @@ const buildWhatsAppMessage = async (req, res) => {
     if (!ensureLoggedUser(req, res)) return;
 
     const userId = getAuthUserId(req);
-    const cart = await findActiveCartByUser(userId);
+    const cart = await syncAndReturnCartByUser(userId);
 
     if (!cart || cart.items.length === 0) {
       return res.status(400).json({
@@ -330,6 +426,8 @@ const buildWhatsAppMessage = async (req, res) => {
         message: "Los productos de la lista ya no están disponibles"
       });
     }
+
+    const totalReferencial = calculateCartTotal(validItems);
 
     const productLines = validItems
       .map((item, index) => {
@@ -346,16 +444,14 @@ const buildWhatsAppMessage = async (req, res) => {
           product?.eventoNombre ? `   Evento: ${product.eventoNombre}` : "",
           requiresConfirmation
             ? `   Disponibilidad: ${getAvailabilityText(product)}`
-            : product?.disponibilidad
-            ? `   Disponibilidad: ${product.disponibilidad.replace("_", " ")}`
             : "",
           requiresConfirmation
             ? "   Cantidad: Consultar disponibilidad"
             : `   Cantidad: ${cantidad}`,
-          `   Precio referencial: S/ ${precio}`,
+          `   Precio referencial: S/ ${formatMoney(precio)}`,
           requiresConfirmation
-            ? `   Subtotal referencial: S/ ${precio}`
-            : `   Subtotal: S/ ${subtotal}`
+            ? `   Subtotal referencial: S/ ${formatMoney(precio)}`
+            : `   Subtotal: S/ ${formatMoney(subtotal)}`
         ]
           .filter(Boolean)
           .join("\n");
@@ -384,7 +480,7 @@ const buildWhatsAppMessage = async (req, res) => {
       "Productos seleccionados:",
       productLines,
       "",
-      `Total referencial: S/ ${cart.totalReferencial}`,
+      `Total referencial: S/ ${formatMoney(totalReferencial)}`,
       "",
       "Quedo atento/a a la confirmación de disponibilidad y coordinación del pedido."
     ]
