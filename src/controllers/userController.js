@@ -30,22 +30,6 @@ const normalizeEmail = (email = "") => {
   return email.toString().toLowerCase().trim();
 };
 
-const validateUniqueEmail = async ({ email, currentUserId = null }) => {
-  if (!email) return null;
-
-  const filter = {
-    email: normalizeEmail(email)
-  };
-
-  if (currentUserId) {
-    filter._id = {
-      $ne: currentUserId
-    };
-  }
-
-  return await User.findOne(filter);
-};
-
 const getUsers = async (req, res) => {
   try {
     const { search, role, activos, pais } = req.query;
@@ -132,21 +116,48 @@ const createSubadmin = async (req, res) => {
 
     const normalizedEmail = normalizeEmail(email);
 
-    const emailExists = await validateUniqueEmail({
-      email: normalizedEmail
-    });
-
-    if (emailExists) {
-      return res.status(400).json({
-        message: "Ya existe un usuario registrado con ese correo"
-      });
-    }
-
     const phoneData = normalizePhoneData({
       pais,
       codigoPais,
       telefono
     });
+
+    const existingUser = await User.findOne({
+      email: normalizedEmail
+    });
+
+    if (existingUser) {
+      if (existingUser.role === "admin") {
+        return res.status(400).json({
+          message:
+            "Ese correo ya pertenece a una administradora. No se puede convertir en subadmin."
+        });
+      }
+
+      existingUser.nombre = nombre.trim();
+      existingUser.apellido = apellido.trim();
+      existingUser.alias = alias?.trim() || normalizedEmail.split("@")[0];
+      existingUser.pais = phoneData.pais;
+      existingUser.codigoPais = phoneData.codigoPais;
+      existingUser.telefono = phoneData.telefono;
+      existingUser.telefonoCompleto = phoneData.telefonoCompleto;
+      existingUser.role = "subadmin";
+      existingUser.authProvider = "local";
+      existingUser.emailVerified = true;
+      existingUser.activo = Boolean(activo);
+
+      if (password) {
+        existingUser.password = await bcrypt.hash(password, 10);
+      }
+
+      await existingUser.save();
+
+      return res.json({
+        message:
+          "El usuario ya existía y fue actualizado como subadministrador.",
+        user: buildUserResponse(existingUser)
+      });
+    }
 
     const hashedPassword = await bcrypt.hash(password, 10);
 
@@ -234,9 +245,9 @@ const updateUserData = async (req, res) => {
     }
 
     if (email && normalizeEmail(email) !== user.email) {
-      const emailExists = await validateUniqueEmail({
-        email,
-        currentUserId: user._id
+      const emailExists = await User.findOne({
+        email: normalizeEmail(email),
+        _id: { $ne: user._id }
       });
 
       if (emailExists) {
