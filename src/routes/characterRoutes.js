@@ -25,7 +25,7 @@ router.get("/:id", getCharacterById);
 router.post(
   "/",
   protect,
-  authorizeRoles("admin"),
+  authorizeRoles("admin", "subadmin"),
   createCharacterValidator,
   validateFields,
   createCharacter
@@ -34,7 +34,7 @@ router.post(
 router.put(
   "/:id",
   protect,
-  authorizeRoles("admin"),
+  authorizeRoles("admin", "subadmin"),
   updateCharacterValidator,
   validateFields,
   updateCharacter
@@ -43,7 +43,7 @@ router.put(
 router.delete(
   "/:id",
   protect,
-  authorizeRoles("admin"),
+  authorizeRoles("admin", "subadmin"),
   deleteCharacter
 );
 

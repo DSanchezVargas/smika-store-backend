@@ -38,6 +38,23 @@ const characterSchema = new mongoose.Schema(
       default: null
     },
 
+    serieNombre: {
+      type: String,
+      trim: true,
+      default: "Sin serie definida"
+    },
+
+    estado: {
+      type: String,
+      trim: true,
+      default: "Completo"
+    },
+
+    needsReview: {
+      type: Boolean,
+      default: false
+    },
+
     activo: {
       type: Boolean,
       default: true
@@ -48,6 +65,23 @@ const characterSchema = new mongoose.Schema(
   }
 );
 
-characterSchema.index({ nombre: 1, serie: 1 }, { unique: true });
+characterSchema.index(
+  {
+    nombre: 1,
+    serie: 1,
+    serieNombre: 1
+  },
+  {
+    unique: true
+  }
+);
+
+characterSchema.set("toJSON", {
+  virtuals: true
+});
+
+characterSchema.set("toObject", {
+  virtuals: true
+});
 
 module.exports = mongoose.model("Character", characterSchema);

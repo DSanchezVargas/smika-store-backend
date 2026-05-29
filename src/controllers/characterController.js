@@ -1,5 +1,62 @@
+const mongoose = require("mongoose");
+
 const Character = require("../models/Character");
+const Series = require("../models/Series");
 const { createSlug } = require("../utils/slugHelper");
+
+const isValidObjectId = (value) => {
+  return value && mongoose.Types.ObjectId.isValid(value);
+};
+
+const getTextValue = (...values) => {
+  const found = values.find(
+    (value) => value !== undefined && value !== null && value !== ""
+  );
+
+  return found ? found.toString().trim() : "";
+};
+
+const normalizeCharacterResponse = (character) => {
+  const plainCharacter = character?.toObject ? character.toObject() : character;
+
+  if (!plainCharacter) return null;
+
+  return {
+    ...plainCharacter,
+    id: plainCharacter._id,
+    _id: plainCharacter._id,
+    nombre: plainCharacter.nombre,
+    serieNombre:
+      plainCharacter.serie?.nombre ||
+      plainCharacter.serieNombre ||
+      "Sin serie definida",
+    serie:
+      plainCharacter.serie?._id ||
+      plainCharacter.serie ||
+      null,
+    activo: plainCharacter.activo !== false
+  };
+};
+
+const resolveSerieData = async (serieValue, serieNombreValue = "") => {
+  if (isValidObjectId(serieValue)) {
+    const serie = await Series.findById(serieValue);
+
+    return {
+      serie: serie?._id || serieValue,
+      serieNombre: serieNombreValue || serie?.nombre || "Sin serie definida"
+    };
+  }
+
+  return {
+    serie: null,
+    serieNombre: getTextValue(serieNombreValue, serieValue, "Sin serie definida")
+  };
+};
+
+const populateCharacter = (query) => {
+  return query.populate("serie", "nombre slug");
+};
 
 const getCharacters = async (req, res) => {
   try {
@@ -16,17 +73,21 @@ const getCharacters = async (req, res) => {
     }
 
     if (serie) {
-      filter.serie = serie;
+      if (isValidObjectId(serie)) {
+        filter.serie = serie;
+      } else {
+        filter.serieNombre = { $regex: serie, $options: "i" };
+      }
     }
 
-    const characters = await Character.find(filter)
-      .populate("serie", "nombre slug")
-      .sort({ nombre: 1 });
+    const characters = await populateCharacter(
+      Character.find(filter).sort({ nombre: 1 })
+    );
 
     res.json({
       message: "Lista de personajes o criaturas obtenida correctamente",
       total: characters.length,
-      characters
+      characters: characters.map(normalizeCharacterResponse)
     });
   } catch (error) {
     res.status(500).json({
@@ -38,10 +99,11 @@ const getCharacters = async (req, res) => {
 
 const getCharacterById = async (req, res) => {
   try {
-    const character = await Character.findById(req.params.id).populate(
-      "serie",
-      "nombre slug"
-    );
+    const query = isValidObjectId(req.params.id)
+      ? { _id: req.params.id }
+      : { slug: req.params.id };
+
+    const character = await populateCharacter(Character.findOne(query));
 
     if (!character) {
       return res.status(404).json({
@@ -51,7 +113,7 @@ const getCharacterById = async (req, res) => {
 
     res.json({
       message: "Personaje o criatura obtenido correctamente",
-      character
+      character: normalizeCharacterResponse(character)
     });
   } catch (error) {
     res.status(500).json({
@@ -63,13 +125,33 @@ const getCharacterById = async (req, res) => {
 
 const createCharacter = async (req, res) => {
   try {
-    const { nombre, tipo, descripcion, imagen, serie } = req.body;
+    const {
+      nombre,
+      tipo,
+      descripcion,
+      imagen,
+      serie,
+      serieNombre,
+      estado,
+      needsReview,
+      activo
+    } = req.body;
 
-    const slug = createSlug(nombre);
+    const cleanName = getTextValue(nombre);
+
+    if (!cleanName) {
+      return res.status(400).json({
+        message: "El nombre del personaje es obligatorio"
+      });
+    }
+
+    const serieData = await resolveSerieData(serie, serieNombre);
+    const slug = createSlug(cleanName);
 
     const characterExists = await Character.findOne({
-      nombre: { $regex: `^${nombre}$`, $options: "i" },
-      serie: serie || null
+      nombre: { $regex: `^${cleanName}$`, $options: "i" },
+      serie: serieData.serie,
+      serieNombre: serieData.serieNombre
     });
 
     if (characterExists) {
@@ -79,17 +161,25 @@ const createCharacter = async (req, res) => {
     }
 
     const character = await Character.create({
-      nombre,
+      nombre: cleanName,
       slug,
-      tipo,
-      descripcion,
-      imagen,
-      serie: serie || null
+      tipo: getTextValue(tipo, "Personaje"),
+      descripcion: getTextValue(descripcion),
+      imagen: getTextValue(imagen),
+      serie: serieData.serie,
+      serieNombre: serieData.serieNombre,
+      estado: getTextValue(estado, needsReview ? "Faltan detalles" : "Completo"),
+      needsReview: Boolean(needsReview),
+      activo: activo !== undefined ? Boolean(activo) : true
     });
+
+    const populatedCharacter = await populateCharacter(
+      Character.findById(character._id)
+    );
 
     res.status(201).json({
       message: "Personaje o criatura creado correctamente",
-      character
+      character: normalizeCharacterResponse(populatedCharacter)
     });
   } catch (error) {
     res.status(500).json({
@@ -101,7 +191,17 @@ const createCharacter = async (req, res) => {
 
 const updateCharacter = async (req, res) => {
   try {
-    const { nombre, tipo, descripcion, imagen, serie, activo } = req.body;
+    const {
+      nombre,
+      tipo,
+      descripcion,
+      imagen,
+      serie,
+      serieNombre,
+      estado,
+      needsReview,
+      activo
+    } = req.body;
 
     const character = await Character.findById(req.params.id);
 
@@ -111,37 +211,52 @@ const updateCharacter = async (req, res) => {
       });
     }
 
-    if (nombre || serie !== undefined) {
-      const newName = nombre || character.nombre;
-      const newSerie = serie !== undefined ? serie || null : character.serie;
+    const cleanName = getTextValue(nombre, character.nombre);
+    const serieData =
+      serie !== undefined || serieNombre !== undefined
+        ? await resolveSerieData(serie, serieNombre)
+        : {
+            serie: character.serie,
+            serieNombre: character.serieNombre
+          };
 
+    if (nombre !== undefined || serie !== undefined || serieNombre !== undefined) {
       const duplicatedCharacter = await Character.findOne({
-        nombre: { $regex: `^${newName}$`, $options: "i" },
-        serie: newSerie,
+        nombre: { $regex: `^${cleanName}$`, $options: "i" },
+        serie: serieData.serie,
+        serieNombre: serieData.serieNombre,
         _id: { $ne: character._id }
       });
 
       if (duplicatedCharacter) {
         return res.status(400).json({
-          message: "Ya existe otro personaje o criatura con ese nombre para esta serie"
+          message:
+            "Ya existe otro personaje o criatura con ese nombre para esta serie"
         });
       }
 
-      character.nombre = newName;
-      character.slug = createSlug(newName);
-      character.serie = newSerie;
+      character.nombre = cleanName;
+      character.slug = createSlug(cleanName);
+      character.serie = serieData.serie;
+      character.serieNombre = serieData.serieNombre;
     }
 
     if (tipo !== undefined) character.tipo = tipo;
     if (descripcion !== undefined) character.descripcion = descripcion;
     if (imagen !== undefined) character.imagen = imagen;
-    if (activo !== undefined) character.activo = activo;
+    if (estado !== undefined) character.estado = estado;
+    if (needsReview !== undefined) character.needsReview = Boolean(needsReview);
+    if (activo !== undefined) character.activo = Boolean(activo);
 
     await character.save();
 
+    const populatedCharacter = await populateCharacter(
+      Character.findById(character._id)
+    );
+
     res.json({
       message: "Personaje o criatura actualizado correctamente",
-      character
+      character: normalizeCharacterResponse(populatedCharacter)
     });
   } catch (error) {
     res.status(500).json({
@@ -165,7 +280,8 @@ const deleteCharacter = async (req, res) => {
     await character.save();
 
     res.json({
-      message: "Personaje o criatura desactivado correctamente"
+      message: "Personaje o criatura desactivado correctamente",
+      character: normalizeCharacterResponse(character)
     });
   } catch (error) {
     res.status(500).json({

@@ -1,14 +1,141 @@
+const mongoose = require("mongoose");
+
 const Series = require("../models/Series");
 const { createSlug } = require("../utils/slugHelper");
 
+const isValidObjectId = (value) => {
+  return value && mongoose.Types.ObjectId.isValid(value);
+};
+
+const getOptionalObjectId = (value) => {
+  return isValidObjectId(value) ? value : null;
+};
+
+const getTextValue = (...values) => {
+  const found = values.find(
+    (value) => value !== undefined && value !== null && value !== ""
+  );
+
+  return found ? found.toString().trim() : "";
+};
+
+const populateSeries = (query) => {
+  return query
+    .populate("categoriaPrincipal", "nombre slug")
+    .populate("subcategoria", "nombre slug")
+    .populate("origen", "nombre slug code")
+    .populate("creadores", "nombre slug tipo");
+};
+
+const normalizeSerieResponse = (serie) => {
+  const plainSerie = serie?.toObject ? serie.toObject() : serie;
+
+  if (!plainSerie) return null;
+
+  return {
+    ...plainSerie,
+    id: plainSerie._id,
+    _id: plainSerie._id,
+    nombre: plainSerie.nombre,
+    slug: plainSerie.slug,
+    categoriaPrincipalNombre:
+      plainSerie.categoriaPrincipal?.nombre ||
+      plainSerie.categoriaPrincipalNombre ||
+      "Series",
+    subcategoriaNombre:
+      plainSerie.subcategoria?.nombre || plainSerie.subcategoriaNombre || "",
+    origenNombre:
+      plainSerie.origen?.nombre || plainSerie.origenNombre || "Variado",
+    pais: plainSerie.pais || "V",
+    creadoresNombre:
+      plainSerie.creadoresNombre ||
+      plainSerie.creadores?.map((creator) => creator.nombre).filter(Boolean) ||
+      [],
+    activa: plainSerie.activa !== false,
+    activo: plainSerie.activo !== false && plainSerie.activa !== false
+  };
+};
+
+const buildSeriesPayload = (body = {}) => {
+  const categoriaPrincipalValue =
+    body.categoriaPrincipal || body.categoria || "";
+
+  const subcategoriaValue = body.subcategoria || "";
+  const origenValue = body.origen || body.pais || "";
+
+  const categoriaPrincipalNombre = getTextValue(
+    body.categoriaPrincipalNombre,
+    body.categoriaNombre,
+    isValidObjectId(categoriaPrincipalValue) ? "" : categoriaPrincipalValue,
+    "Series"
+  );
+
+  const subcategoriaNombre = getTextValue(
+    body.subcategoriaNombre,
+    isValidObjectId(subcategoriaValue) ? "" : subcategoriaValue
+  );
+
+  const origenNombre = getTextValue(
+    body.origenNombre,
+    body.paisNombre,
+    body.country,
+    isValidObjectId(origenValue) ? "" : origenValue,
+    "Variado"
+  );
+
+  return {
+    nombre: getTextValue(body.nombre, body.name),
+    descripcion: getTextValue(body.descripcion, body.description),
+    imagen: getTextValue(body.imagen, body.image),
+
+    categoriaPrincipal: getOptionalObjectId(categoriaPrincipalValue),
+    categoriaPrincipalNombre,
+
+    subcategoria: getOptionalObjectId(subcategoriaValue),
+    subcategoriaNombre,
+
+    origen: getOptionalObjectId(origenValue),
+    origenNombre,
+    pais: getTextValue(body.pais, body.countryCode, "V"),
+
+    creadores: Array.isArray(body.creadores)
+      ? body.creadores.filter(isValidObjectId)
+      : [],
+
+    creadoresNombre: Array.isArray(body.creadoresNombre)
+      ? body.creadoresNombre.filter(Boolean)
+      : [],
+
+    destacada: Boolean(body.destacada),
+    activa:
+      body.activa !== undefined
+        ? Boolean(body.activa)
+        : body.activo !== undefined
+        ? Boolean(body.activo)
+        : true,
+    activo:
+      body.activo !== undefined
+        ? Boolean(body.activo)
+        : body.activa !== undefined
+        ? Boolean(body.activa)
+        : true,
+    orden:
+      body.orden !== undefined && body.orden !== ""
+        ? Number(body.orden)
+        : 0
+  };
+};
+
 const getSeries = async (req, res) => {
   try {
-    const { search, categoriaPrincipal, subcategoria, origen, activos } = req.query;
+    const { search, categoriaPrincipal, subcategoria, origen, activos } =
+      req.query;
 
     const filter = {};
 
     if (activos !== "false") {
       filter.activa = true;
+      filter.activo = true;
     }
 
     if (search) {
@@ -16,28 +143,46 @@ const getSeries = async (req, res) => {
     }
 
     if (categoriaPrincipal) {
-      filter.categoriaPrincipal = categoriaPrincipal;
+      if (isValidObjectId(categoriaPrincipal)) {
+        filter.categoriaPrincipal = categoriaPrincipal;
+      } else {
+        filter.categoriaPrincipalNombre = {
+          $regex: categoriaPrincipal,
+          $options: "i"
+        };
+      }
     }
 
     if (subcategoria) {
-      filter.subcategoria = subcategoria;
+      if (isValidObjectId(subcategoria)) {
+        filter.subcategoria = subcategoria;
+      } else {
+        filter.subcategoriaNombre = {
+          $regex: subcategoria,
+          $options: "i"
+        };
+      }
     }
 
     if (origen) {
-      filter.origen = origen;
+      if (isValidObjectId(origen)) {
+        filter.origen = origen;
+      } else {
+        filter.origenNombre = {
+          $regex: origen,
+          $options: "i"
+        };
+      }
     }
 
-    const series = await Series.find(filter)
-      .populate("categoriaPrincipal", "nombre slug")
-      .populate("subcategoria", "nombre slug")
-      .populate("origen", "nombre slug")
-      .populate("creadores", "nombre slug tipo")
-      .sort({ orden: 1, nombre: 1 });
+    const series = await populateSeries(
+      Series.find(filter).sort({ orden: 1, nombre: 1 })
+    );
 
     res.json({
       message: "Lista de series obtenida correctamente",
       total: series.length,
-      series
+      series: series.map(normalizeSerieResponse)
     });
   } catch (error) {
     res.status(500).json({
@@ -49,11 +194,11 @@ const getSeries = async (req, res) => {
 
 const getSeriesById = async (req, res) => {
   try {
-    const serie = await Series.findById(req.params.id)
-      .populate("categoriaPrincipal", "nombre slug")
-      .populate("subcategoria", "nombre slug")
-      .populate("origen", "nombre slug")
-      .populate("creadores", "nombre slug tipo");
+    const query = isValidObjectId(req.params.id)
+      ? { _id: req.params.id }
+      : { slug: req.params.id };
+
+    const serie = await populateSeries(Series.findOne(query));
 
     if (!serie) {
       return res.status(404).json({
@@ -63,7 +208,7 @@ const getSeriesById = async (req, res) => {
 
     res.json({
       message: "Serie obtenida correctamente",
-      serie
+      serie: normalizeSerieResponse(serie)
     });
   } catch (error) {
     res.status(500).json({
@@ -75,19 +220,15 @@ const getSeriesById = async (req, res) => {
 
 const createSeries = async (req, res) => {
   try {
-    const {
-      nombre,
-      descripcion,
-      imagen,
-      categoriaPrincipal,
-      subcategoria,
-      origen,
-      creadores,
-      destacada,
-      orden
-    } = req.body;
+    const payload = buildSeriesPayload(req.body);
 
-    const slug = createSlug(nombre);
+    if (!payload.nombre) {
+      return res.status(400).json({
+        message: "El nombre de la serie es obligatorio"
+      });
+    }
+
+    const slug = createSlug(payload.nombre);
 
     const seriesExists = await Series.findOne({ slug });
 
@@ -98,21 +239,15 @@ const createSeries = async (req, res) => {
     }
 
     const serie = await Series.create({
-      nombre,
-      slug,
-      descripcion,
-      imagen,
-      categoriaPrincipal,
-      subcategoria: subcategoria || null,
-      origen,
-      creadores: creadores || [],
-      destacada,
-      orden
+      ...payload,
+      slug
     });
+
+    const populatedSerie = await populateSeries(Series.findById(serie._id));
 
     res.status(201).json({
       message: "Serie creada correctamente",
-      serie
+      serie: normalizeSerieResponse(populatedSerie)
     });
   } catch (error) {
     res.status(500).json({
@@ -124,18 +259,7 @@ const createSeries = async (req, res) => {
 
 const updateSeries = async (req, res) => {
   try {
-    const {
-      nombre,
-      descripcion,
-      imagen,
-      categoriaPrincipal,
-      subcategoria,
-      origen,
-      creadores,
-      destacada,
-      activa,
-      orden
-    } = req.body;
+    const payload = buildSeriesPayload(req.body);
 
     const serie = await Series.findById(req.params.id);
 
@@ -145,8 +269,8 @@ const updateSeries = async (req, res) => {
       });
     }
 
-    if (nombre) {
-      const slug = createSlug(nombre);
+    if (payload.nombre) {
+      const slug = createSlug(payload.nombre);
 
       const duplicatedSeries = await Series.findOne({
         slug,
@@ -159,25 +283,23 @@ const updateSeries = async (req, res) => {
         });
       }
 
-      serie.nombre = nombre;
+      serie.nombre = payload.nombre;
       serie.slug = slug;
     }
 
-    if (descripcion !== undefined) serie.descripcion = descripcion;
-    if (imagen !== undefined) serie.imagen = imagen;
-    if (categoriaPrincipal !== undefined) serie.categoriaPrincipal = categoriaPrincipal;
-    if (subcategoria !== undefined) serie.subcategoria = subcategoria || null;
-    if (origen !== undefined) serie.origen = origen;
-    if (creadores !== undefined) serie.creadores = creadores;
-    if (destacada !== undefined) serie.destacada = destacada;
-    if (activa !== undefined) serie.activa = activa;
-    if (orden !== undefined) serie.orden = orden;
+    Object.entries(payload).forEach(([key, value]) => {
+      if (key !== "nombre" && value !== undefined) {
+        serie[key] = value;
+      }
+    });
 
     await serie.save();
 
+    const populatedSerie = await populateSeries(Series.findById(serie._id));
+
     res.json({
       message: "Serie actualizada correctamente",
-      serie
+      serie: normalizeSerieResponse(populatedSerie)
     });
   } catch (error) {
     res.status(500).json({
@@ -198,10 +320,13 @@ const deleteSeries = async (req, res) => {
     }
 
     serie.activa = false;
+    serie.activo = false;
+
     await serie.save();
 
     res.json({
-      message: "Serie desactivada correctamente"
+      message: "Serie desactivada correctamente",
+      serie: normalizeSerieResponse(serie)
     });
   } catch (error) {
     res.status(500).json({

@@ -25,7 +25,7 @@ router.get("/:id", getSeriesById);
 router.post(
   "/",
   protect,
-  authorizeRoles("admin"),
+  authorizeRoles("admin", "subadmin"),
   createSerieValidator,
   validateFields,
   createSeries
@@ -34,7 +34,7 @@ router.post(
 router.put(
   "/:id",
   protect,
-  authorizeRoles("admin"),
+  authorizeRoles("admin", "subadmin"),
   updateSerieValidator,
   validateFields,
   updateSeries
@@ -43,7 +43,7 @@ router.put(
 router.delete(
   "/:id",
   protect,
-  authorizeRoles("admin"),
+  authorizeRoles("admin", "subadmin"),
   deleteSeries
 );
 

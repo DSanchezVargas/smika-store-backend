@@ -30,7 +30,13 @@ const seriesSchema = new mongoose.Schema(
     categoriaPrincipal: {
       type: mongoose.Schema.Types.ObjectId,
       ref: "Category",
-      required: [true, "La categoría principal es obligatoria"]
+      default: null
+    },
+
+    categoriaPrincipalNombre: {
+      type: String,
+      trim: true,
+      default: "Series"
     },
 
     subcategoria: {
@@ -39,10 +45,28 @@ const seriesSchema = new mongoose.Schema(
       default: null
     },
 
+    subcategoriaNombre: {
+      type: String,
+      trim: true,
+      default: ""
+    },
+
     origen: {
       type: mongoose.Schema.Types.ObjectId,
       ref: "Origin",
-      required: [true, "El país u origen de la serie es obligatorio"]
+      default: null
+    },
+
+    origenNombre: {
+      type: String,
+      trim: true,
+      default: "Variado"
+    },
+
+    pais: {
+      type: String,
+      trim: true,
+      default: "V"
     },
 
     creadores: [
@@ -52,12 +76,22 @@ const seriesSchema = new mongoose.Schema(
       }
     ],
 
+    creadoresNombre: {
+      type: [String],
+      default: []
+    },
+
     destacada: {
       type: Boolean,
       default: false
     },
 
     activa: {
+      type: Boolean,
+      default: true
+    },
+
+    activo: {
       type: Boolean,
       default: true
     },
@@ -71,5 +105,13 @@ const seriesSchema = new mongoose.Schema(
     timestamps: true
   }
 );
+
+seriesSchema.set("toJSON", {
+  virtuals: true
+});
+
+seriesSchema.set("toObject", {
+  virtuals: true
+});
 
 module.exports = mongoose.model("Series", seriesSchema);
