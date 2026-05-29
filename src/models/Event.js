@@ -18,8 +18,8 @@ const eventSchema = new mongoose.Schema(
 
     descripcion: {
       type: String,
-      required: [true, "La descripción del evento es obligatoria"],
-      trim: true
+      trim: true,
+      default: ""
     },
 
     imagen: {
@@ -27,22 +27,51 @@ const eventSchema = new mongoose.Schema(
       default: ""
     },
 
+    imagenes: {
+      type: [String],
+      default: []
+    },
+
     categoria: {
       type: mongoose.Schema.Types.ObjectId,
       ref: "Category",
-      required: [true, "La categoría del evento es obligatoria"]
+      default: null
+    },
+
+    categoriaNombre: {
+      type: String,
+      trim: true,
+      default: "Eventos"
     },
 
     serie: {
       type: mongoose.Schema.Types.ObjectId,
       ref: "Series",
-      required: [true, "La serie relacionada al evento es obligatoria"]
+      default: null
+    },
+
+    serieNombre: {
+      type: String,
+      trim: true,
+      default: ""
     },
 
     origen: {
       type: mongoose.Schema.Types.ObjectId,
       ref: "Origin",
-      required: [true, "El país u origen del evento es obligatorio"]
+      default: null
+    },
+
+    origenNombre: {
+      type: String,
+      trim: true,
+      default: "Variado"
+    },
+
+    pais: {
+      type: String,
+      trim: true,
+      default: "V"
     },
 
     tipoEvento: {
@@ -72,6 +101,13 @@ const eventSchema = new mongoose.Schema(
       default: false
     },
 
+    productos: [
+      {
+        type: mongoose.Schema.Types.ObjectId,
+        ref: "Product"
+      }
+    ],
+
     activo: {
       type: Boolean,
       default: true
@@ -81,5 +117,13 @@ const eventSchema = new mongoose.Schema(
     timestamps: true
   }
 );
+
+eventSchema.set("toJSON", {
+  virtuals: true
+});
+
+eventSchema.set("toObject", {
+  virtuals: true
+});
 
 module.exports = mongoose.model("Event", eventSchema);

@@ -1,63 +1,69 @@
 const { body } = require("express-validator");
 
+const optionalText = (field, message) =>
+  body(field).optional({ nullable: true, checkFalsy: true }).isString().withMessage(message);
+
+const optionalBoolean = (field, message) =>
+  body(field).optional().isBoolean().withMessage(message);
+
+const optionalDate = (field, message) =>
+  body(field).optional({ nullable: true, checkFalsy: true }).isISO8601().withMessage(message);
+
+const optionalMongoId = (field, message) =>
+  body(field).optional({ nullable: true, checkFalsy: true }).isMongoId().withMessage(message);
+
 const createEventValidator = [
   body("titulo")
-    .notEmpty()
-    .withMessage("El título del evento es obligatorio")
+    .optional({ nullable: true, checkFalsy: true })
     .isLength({ min: 2 })
     .withMessage("El título debe tener al menos 2 caracteres"),
 
-  body("descripcion")
-    .notEmpty()
-    .withMessage("La descripción del evento es obligatoria"),
-
-  body("imagen")
-    .optional()
-    .isString()
-    .withMessage("La imagen debe ser una ruta generada por el sistema"),
-
-  body("categoria")
-    .notEmpty()
-    .withMessage("La categoría del evento es obligatoria")
-    .isMongoId()
-    .withMessage("La categoría debe ser un ID válido"),
-
-  body("serie")
-    .notEmpty()
-    .withMessage("La serie relacionada al evento es obligatoria")
-    .isMongoId()
-    .withMessage("La serie debe ser un ID válido"),
-
-  body("origen")
-    .notEmpty()
-    .withMessage("El país u origen del evento es obligatorio")
-    .isMongoId()
-    .withMessage("El país u origen debe ser un ID válido"),
-
-  body("tipoEvento")
-    .optional()
-    .isString()
-    .withMessage("El tipo de evento debe ser texto"),
-
-  body("fechaInicio")
+  body("nombre")
     .optional({ nullable: true, checkFalsy: true })
-    .isISO8601()
-    .withMessage("La fecha de inicio debe tener un formato válido"),
+    .isLength({ min: 2 })
+    .withMessage("El nombre debe tener al menos 2 caracteres"),
 
-  body("fechaFin")
-    .optional({ nullable: true, checkFalsy: true })
-    .isISO8601()
-    .withMessage("La fecha de fin debe tener un formato válido"),
+  optionalText("descripcion", "La descripción del evento debe ser texto"),
+  optionalText("imagen", "La imagen debe ser texto"),
+
+  body("imagenes")
+    .optional()
+    .isArray()
+    .withMessage("Las imágenes deben enviarse como arreglo"),
+
+  optionalMongoId("categoria", "La categoría debe ser un ID válido"),
+  optionalText("categoriaNombre", "El nombre de la categoría debe ser texto"),
+
+  optionalText("serie", "La serie debe enviarse como texto o ID"),
+  optionalText("serieNombre", "El nombre de la serie debe ser texto"),
+
+  optionalMongoId("origen", "El origen debe ser un ID válido"),
+  optionalText("origenNombre", "El nombre de origen debe ser texto"),
+  optionalText("pais", "El país debe ser texto"),
+
+  optionalText("tipoEvento", "El tipo de evento debe ser texto"),
+  optionalText("tipo", "El tipo debe ser texto"),
+
+  optionalDate("fechaInicio", "La fecha de inicio debe tener un formato válido"),
+  optionalDate("fechaFin", "La fecha de fin debe tener un formato válido"),
 
   body("estado")
     .optional()
     .isIn(["proximo", "activo", "finalizado", "cancelado"])
     .withMessage("El estado del evento no es válido"),
 
-  body("destacado")
+  optionalBoolean("destacado", "El campo destacado debe ser verdadero o falso"),
+  optionalBoolean("activo", "El campo activo debe ser verdadero o falso"),
+
+  body("productos")
     .optional()
-    .isBoolean()
-    .withMessage("El campo destacado debe ser verdadero o falso")
+    .isArray()
+    .withMessage("Los productos deben enviarse como arreglo"),
+
+  body("productos.*")
+    .optional()
+    .isMongoId()
+    .withMessage("Cada producto debe ser un ID válido")
 ];
 
 const updateEventValidator = createEventValidator;
