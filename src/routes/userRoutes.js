@@ -3,6 +3,7 @@ const express = require("express");
 const {
   getUsers,
   getUserById,
+  createSubadmin,
   updateUserRole,
   updateUserData,
   deactivateUser
@@ -10,6 +11,7 @@ const {
 
 const {
   userIdValidator,
+  createSubadminValidator,
   updateUserRoleValidator,
   updateUserDataValidator
 } = require("../validators/userValidator");
@@ -25,6 +27,15 @@ router.get(
   protect,
   authorizeRoles("admin"),
   getUsers
+);
+
+router.post(
+  "/subadmins",
+  protect,
+  authorizeRoles("admin"),
+  createSubadminValidator,
+  validateFields,
+  createSubadmin
 );
 
 router.get(

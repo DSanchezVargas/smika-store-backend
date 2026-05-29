@@ -1,9 +1,14 @@
+const bcrypt = require("bcryptjs");
+
 const User = require("../models/User");
 const { normalizePhoneData } = require("../utils/phoneHelper");
+
+const ALLOWED_ROLES = ["cliente", "admin", "subadmin"];
 
 const buildUserResponse = (user) => {
   return {
     id: user._id,
+    _id: user._id,
     nombre: user.nombre,
     apellido: user.apellido,
     alias: user.alias,
@@ -14,9 +19,31 @@ const buildUserResponse = (user) => {
     email: user.email,
     role: user.role,
     activo: user.activo,
+    authProvider: user.authProvider,
+    emailVerified: user.emailVerified,
     createdAt: user.createdAt,
     updatedAt: user.updatedAt
   };
+};
+
+const normalizeEmail = (email = "") => {
+  return email.toString().toLowerCase().trim();
+};
+
+const validateUniqueEmail = async ({ email, currentUserId = null }) => {
+  if (!email) return null;
+
+  const filter = {
+    email: normalizeEmail(email)
+  };
+
+  if (currentUserId) {
+    filter._id = {
+      $ne: currentUserId
+    };
+  }
+
+  return await User.findOne(filter);
 };
 
 const getUsers = async (req, res) => {
@@ -49,13 +76,13 @@ const getUsers = async (req, res) => {
     }
 
     const users = await User.find(filter)
-      .select("-password")
+      .select("-password -resetPasswordCodeHash")
       .sort({ createdAt: -1 });
 
     res.json({
       message: "Lista de usuarios obtenida correctamente",
       total: users.length,
-      users
+      users: users.map(buildUserResponse)
     });
   } catch (error) {
     res.status(500).json({
@@ -67,7 +94,9 @@ const getUsers = async (req, res) => {
 
 const getUserById = async (req, res) => {
   try {
-    const user = await User.findById(req.params.id).select("-password");
+    const user = await User.findById(req.params.id).select(
+      "-password -resetPasswordCodeHash"
+    );
 
     if (!user) {
       return res.status(404).json({
@@ -77,11 +106,73 @@ const getUserById = async (req, res) => {
 
     res.json({
       message: "Usuario obtenido correctamente",
-      user
+      user: buildUserResponse(user)
     });
   } catch (error) {
     res.status(500).json({
       message: "Error al obtener usuario",
+      error: error.message
+    });
+  }
+};
+
+const createSubadmin = async (req, res) => {
+  try {
+    const {
+      nombre,
+      apellido,
+      alias = "",
+      email,
+      password,
+      pais = "PE",
+      codigoPais = "+51",
+      telefono = "",
+      activo = true
+    } = req.body;
+
+    const normalizedEmail = normalizeEmail(email);
+
+    const emailExists = await validateUniqueEmail({
+      email: normalizedEmail
+    });
+
+    if (emailExists) {
+      return res.status(400).json({
+        message: "Ya existe un usuario registrado con ese correo"
+      });
+    }
+
+    const phoneData = normalizePhoneData({
+      pais,
+      codigoPais,
+      telefono
+    });
+
+    const hashedPassword = await bcrypt.hash(password, 10);
+
+    const subadmin = await User.create({
+      nombre: nombre.trim(),
+      apellido: apellido.trim(),
+      alias: alias?.trim() || normalizedEmail.split("@")[0],
+      pais: phoneData.pais,
+      codigoPais: phoneData.codigoPais,
+      telefono: phoneData.telefono,
+      telefonoCompleto: phoneData.telefonoCompleto,
+      email: normalizedEmail,
+      password: hashedPassword,
+      role: "subadmin",
+      authProvider: "local",
+      emailVerified: true,
+      activo: Boolean(activo)
+    });
+
+    res.status(201).json({
+      message: "Subadministrador creado correctamente",
+      user: buildUserResponse(subadmin)
+    });
+  } catch (error) {
+    res.status(500).json({
+      message: "Error al crear subadministrador",
       error: error.message
     });
   }
@@ -99,7 +190,7 @@ const updateUserRole = async (req, res) => {
       });
     }
 
-    if (!["cliente", "admin"].includes(role)) {
+    if (!ALLOWED_ROLES.includes(role)) {
       return res.status(400).json({
         message: "El rol no es válido"
       });
@@ -130,6 +221,7 @@ const updateUserData = async (req, res) => {
       codigoPais,
       telefono,
       email,
+      password,
       activo
     } = req.body;
 
@@ -141,10 +233,10 @@ const updateUserData = async (req, res) => {
       });
     }
 
-    if (email && email !== user.email) {
-      const emailExists = await User.findOne({
+    if (email && normalizeEmail(email) !== user.email) {
+      const emailExists = await validateUniqueEmail({
         email,
-        _id: { $ne: user._id }
+        currentUserId: user._id
       });
 
       if (emailExists) {
@@ -153,7 +245,7 @@ const updateUserData = async (req, res) => {
         });
       }
 
-      user.email = email;
+      user.email = normalizeEmail(email);
     }
 
     if (nombre !== undefined) user.nombre = nombre;
@@ -175,6 +267,11 @@ const updateUserData = async (req, res) => {
       user.codigoPais = phoneData.codigoPais;
       user.telefono = phoneData.telefono;
       user.telefonoCompleto = phoneData.telefonoCompleto;
+    }
+
+    if (password) {
+      user.password = await bcrypt.hash(password, 10);
+      user.authProvider = "local";
     }
 
     if (activo !== undefined) user.activo = activo;
@@ -207,7 +304,8 @@ const deactivateUser = async (req, res) => {
     await user.save();
 
     res.json({
-      message: "Usuario desactivado correctamente"
+      message: "Usuario desactivado correctamente",
+      user: buildUserResponse(user)
     });
   } catch (error) {
     res.status(500).json({
@@ -220,6 +318,7 @@ const deactivateUser = async (req, res) => {
 module.exports = {
   getUsers,
   getUserById,
+  createSubadmin,
   updateUserRole,
   updateUserData,
   deactivateUser
