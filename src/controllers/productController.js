@@ -56,49 +56,74 @@ const normalizeDisponibilidad = (disponibilidad = "", estado = "") => {
 const normalizeImages = (imagenes = []) => {
   if (!Array.isArray(imagenes)) return [];
 
-  return imagenes.map((image) => {
-    if (typeof image === "string") {
+  return imagenes
+    .map((image) => {
+      if (typeof image === "string") {
+        return {
+          url: image,
+          preview: image,
+          finalPreview: image,
+          storage: image.startsWith("data:")
+            ? "local-data-url"
+            : "external"
+        };
+      }
+
+      const imageUrl =
+        image.url || image.finalPreview || image.preview || image.imagen || "";
+
       return {
-        url: image,
-        preview: image,
-        finalPreview: image,
-        storage: image.startsWith("data:") ? "local-data-url" : "external"
+        url: imageUrl,
+        preview: image.preview || imageUrl,
+        finalPreview: image.finalPreview || imageUrl,
+        publicId: image.publicId || "",
+        name: image.name || image.nombre || "",
+        originalName: image.originalName || "",
+        size: Number(image.size || 0),
+        finalSize: Number(image.finalSize || image.size || 0),
+        width: Number(image.width || 0),
+        height: Number(image.height || 0),
+        finalWidth: Number(image.finalWidth || 0),
+        finalHeight: Number(image.finalHeight || 0),
+        crop: image.crop || {
+          x: 0,
+          y: 0,
+          width: 100,
+          height: 100
+        },
+        zoom: Number(image.zoom || 1),
+        pan: image.pan || {
+          x: 0,
+          y: 0
+        },
+        storage:
+          image.storage ||
+          (imageUrl.startsWith("data:") ? "local-data-url" : "")
       };
-    }
-
-    const imageUrl =
-      image.url || image.finalPreview || image.preview || image.imagen || "";
-
-    return {
-      url: imageUrl,
-      preview: image.preview || imageUrl,
-      finalPreview: image.finalPreview || imageUrl,
-      publicId: image.publicId || "",
-      name: image.name || image.nombre || "",
-      originalName: image.originalName || "",
-      size: Number(image.size || 0),
-      finalSize: Number(image.finalSize || image.size || 0),
-      width: Number(image.width || 0),
-      height: Number(image.height || 0),
-      finalWidth: Number(image.finalWidth || 0),
-      finalHeight: Number(image.finalHeight || 0),
-      crop: image.crop || {
-        x: 0,
-        y: 0,
-        width: 100,
-        height: 100
-      },
-      zoom: Number(image.zoom || 1),
-      pan: image.pan || {
-        x: 0,
-        y: 0
-      },
-      storage: image.storage || (imageUrl.startsWith("data:") ? "local-data-url" : "")
-    };
-  });
+    })
+    .filter((image) => image.url || image.finalPreview || image.preview);
 };
 
-const buildProductPayload = (body) => {
+const shouldReplaceImages = (body = {}, includeImages = false) => {
+  if (includeImages) return true;
+
+  const hasImagesField = Object.prototype.hasOwnProperty.call(body, "imagenes");
+
+  if (!hasImagesField) return false;
+
+  const explicitlyTouchedImages =
+    body.replaceImages === true ||
+    body.reemplazarImagenes === true ||
+    body.imagenesTouched === true ||
+    body.imagesTouched === true;
+
+  const hasRealImages =
+    Array.isArray(body.imagenes) && body.imagenes.length > 0;
+
+  return explicitlyTouchedImages || hasRealImages;
+};
+
+const buildProductPayload = (body = {}, options = {}) => {
   const disponibilidad = normalizeDisponibilidad(
     body.disponibilidad,
     body.estado
@@ -147,21 +172,22 @@ const buildProductPayload = (body) => {
     body.type
   );
 
-  return {
+  const payload = {
     nombre: getTextValue(body.nombre, body.name),
     descripcion:
       body.descripcion ||
       "Producto registrado desde el panel administrador de Smika Store.",
+
     precioReferencial: price,
     precio: price,
     precioAnterior:
       body.precioAnterior !== undefined && body.precioAnterior !== ""
         ? Number(body.precioAnterior)
         : null,
-    imagenes: normalizeImages(body.imagenes || []),
 
     categoria: getOptionalObjectId(body.categoria),
     categoriaNombre,
+
     subcategoria: getOptionalObjectId(body.subcategoria),
     subcategoriaNombre: getTextValue(body.subcategoriaNombre),
 
@@ -186,11 +212,13 @@ const buildProductPayload = (body) => {
 
     marca: body.marca || "Sin marca",
     tipoProducto,
+
     material: body.material || "",
     tamano: body.tamano || "",
 
     disponibilidad,
     estado,
+
     stock: Number(body.stock || 0),
     tiempoEstimado: body.tiempoEstimado || "",
 
@@ -198,9 +226,18 @@ const buildProductPayload = (body) => {
     esNuevo: body.esNuevo !== undefined ? Boolean(body.esNuevo) : true,
     esDestacado:
       body.esDestacado !== undefined ? Boolean(body.esDestacado) : false,
+
     activo:
-      body.activo !== undefined ? Boolean(body.activo) : estado !== "Inactivo"
+      body.activo !== undefined
+        ? Boolean(body.activo)
+        : estado !== "Inactivo"
   };
+
+  if (shouldReplaceImages(body, options.includeImages === true)) {
+    payload.imagenes = normalizeImages(body.imagenes || []);
+  }
+
+  return payload;
 };
 
 const getProductNotificationMessage = (type, product) => {
@@ -454,7 +491,9 @@ const getProductById = async (req, res) => {
 
 const createProduct = async (req, res) => {
   try {
-    const payload = buildProductPayload(req.body);
+    const payload = buildProductPayload(req.body, {
+      includeImages: true
+    });
 
     const slug = createSlug(payload.nombre);
 
@@ -494,7 +533,9 @@ const createProduct = async (req, res) => {
 
 const updateProduct = async (req, res) => {
   try {
-    const payload = buildProductPayload(req.body);
+    const payload = buildProductPayload(req.body, {
+      includeImages: false
+    });
 
     const product = await Product.findById(req.params.id);
 
