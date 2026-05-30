@@ -27,6 +27,11 @@ const seriesSchema = new mongoose.Schema(
       default: ""
     },
 
+    imagenes: {
+      type: [String],
+      default: []
+    },
+
     categoriaPrincipal: {
       type: mongoose.Schema.Types.ObjectId,
       ref: "Category",
@@ -79,6 +84,18 @@ const seriesSchema = new mongoose.Schema(
     creadoresNombre: {
       type: [String],
       default: []
+    },
+
+    genero: {
+      type: String,
+      trim: true,
+      default: ""
+    },
+
+    tipo: {
+      type: String,
+      trim: true,
+      default: "Historia"
     },
 
     destacada: {

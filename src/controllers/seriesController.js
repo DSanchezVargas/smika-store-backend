@@ -19,6 +19,47 @@ const getTextValue = (...values) => {
   return found ? found.toString().trim() : "";
 };
 
+const normalizeImages = (body = {}) => {
+  const rawImages = Array.isArray(body.imagenes)
+    ? body.imagenes
+    : Array.isArray(body.images)
+    ? body.images
+    : [];
+
+  const imagesFromArray = rawImages
+    .map((image) => {
+      if (typeof image === "string") return image.trim();
+
+      if (image && typeof image === "object") {
+        return (
+          image.finalPreview ||
+          image.url ||
+          image.preview ||
+          image.src ||
+          ""
+        ).trim();
+      }
+
+      return "";
+    })
+    .filter(Boolean);
+
+  const imagesFromText = getTextValue(body.imagenesTexto)
+    .split(",")
+    .map((image) => image.trim())
+    .filter(Boolean);
+
+  const mainImage = getTextValue(body.imagen, body.image);
+
+  const normalizedImages = [
+    mainImage,
+    ...imagesFromArray,
+    ...imagesFromText
+  ].filter(Boolean);
+
+  return [...new Set(normalizedImages)];
+};
+
 const populateSeries = (query) => {
   return query
     .populate("categoriaPrincipal", "nombre slug")
@@ -32,25 +73,52 @@ const normalizeSerieResponse = (serie) => {
 
   if (!plainSerie) return null;
 
+  const imagenes = Array.isArray(plainSerie.imagenes)
+    ? plainSerie.imagenes.filter(Boolean)
+    : [];
+
+  const mainImage = plainSerie.imagen || imagenes[0] || "";
+
+  const finalImages = mainImage
+    ? [mainImage, ...imagenes.filter((image) => image !== mainImage)]
+    : imagenes;
+
   return {
     ...plainSerie,
     id: plainSerie._id,
     _id: plainSerie._id,
     nombre: plainSerie.nombre,
     slug: plainSerie.slug,
+
+    imagen: mainImage,
+    imagenes: finalImages,
+
     categoriaPrincipalNombre:
       plainSerie.categoriaPrincipal?.nombre ||
       plainSerie.categoriaPrincipalNombre ||
       "Series",
+
     subcategoriaNombre:
       plainSerie.subcategoria?.nombre || plainSerie.subcategoriaNombre || "",
+
     origenNombre:
       plainSerie.origen?.nombre || plainSerie.origenNombre || "Variado",
+
     pais: plainSerie.pais || "V",
+    tipo: plainSerie.tipo || "Historia",
+    genero: plainSerie.genero || "",
+
     creadoresNombre:
       plainSerie.creadoresNombre ||
       plainSerie.creadores?.map((creator) => creator.nombre).filter(Boolean) ||
       [],
+
+    autor:
+      plainSerie.autor ||
+      plainSerie.creadoresNombre?.join(", ") ||
+      plainSerie.creadores?.map((creator) => creator.nombre).join(", ") ||
+      "",
+
     activa: plainSerie.activa !== false,
     activo: plainSerie.activo !== false && plainSerie.activa !== false
   };
@@ -83,10 +151,15 @@ const buildSeriesPayload = (body = {}) => {
     "Variado"
   );
 
+  const imagenes = normalizeImages(body);
+  const imagen = getTextValue(body.imagen, body.image, imagenes[0]);
+
   return {
     nombre: getTextValue(body.nombre, body.name),
     descripcion: getTextValue(body.descripcion, body.description),
-    imagen: getTextValue(body.imagen, body.image),
+
+    imagen,
+    imagenes,
 
     categoriaPrincipal: getOptionalObjectId(categoriaPrincipalValue),
     categoriaPrincipalNombre,
@@ -98,27 +171,38 @@ const buildSeriesPayload = (body = {}) => {
     origenNombre,
     pais: getTextValue(body.pais, body.countryCode, "V"),
 
+    tipo: getTextValue(body.tipo, "Historia"),
+    genero: getTextValue(body.genero),
+
     creadores: Array.isArray(body.creadores)
       ? body.creadores.filter(isValidObjectId)
       : [],
 
     creadoresNombre: Array.isArray(body.creadoresNombre)
       ? body.creadoresNombre.filter(Boolean)
+      : body.autor
+      ? body.autor
+          .split(",")
+          .map((creator) => creator.trim())
+          .filter(Boolean)
       : [],
 
     destacada: Boolean(body.destacada),
+
     activa:
       body.activa !== undefined
         ? Boolean(body.activa)
         : body.activo !== undefined
         ? Boolean(body.activo)
         : true,
+
     activo:
       body.activo !== undefined
         ? Boolean(body.activo)
         : body.activa !== undefined
         ? Boolean(body.activa)
         : true,
+
     orden:
       body.orden !== undefined && body.orden !== ""
         ? Number(body.orden)
