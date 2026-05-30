@@ -16,6 +16,12 @@ const getTextValue = (...values) => {
     (value) => value !== undefined && value !== null && value !== ""
   );
 
+  if (Array.isArray(found)) return found.join(", ").trim();
+
+  if (found && typeof found === "object") {
+    return found.nombre || found.titulo || found.name || "";
+  }
+
   return found ? found.toString().trim() : "";
 };
 
@@ -36,6 +42,7 @@ const normalizeImages = (body = {}) => {
           image.url ||
           image.preview ||
           image.src ||
+          image.imagen ||
           ""
         ).trim();
       }
@@ -60,21 +67,30 @@ const normalizeImages = (body = {}) => {
   return [...new Set(normalizedImages)];
 };
 
-const populateSeries = (query) => {
-  return query
-    .populate("categoriaPrincipal", "nombre slug")
-    .populate("subcategoria", "nombre slug")
-    .populate("origen", "nombre slug code")
-    .populate("creadores", "nombre slug tipo");
-};
-
 const normalizeSerieResponse = (serie) => {
   const plainSerie = serie?.toObject ? serie.toObject() : serie;
 
   if (!plainSerie) return null;
 
   const imagenes = Array.isArray(plainSerie.imagenes)
-    ? plainSerie.imagenes.filter(Boolean)
+    ? plainSerie.imagenes
+        .map((image) => {
+          if (typeof image === "string") return image;
+
+          if (image && typeof image === "object") {
+            return (
+              image.finalPreview ||
+              image.url ||
+              image.preview ||
+              image.src ||
+              image.imagen ||
+              ""
+            );
+          }
+
+          return "";
+        })
+        .filter(Boolean)
     : [];
 
   const mainImage = plainSerie.imagen || imagenes[0] || "";
@@ -83,44 +99,59 @@ const normalizeSerieResponse = (serie) => {
     ? [mainImage, ...imagenes.filter((image) => image !== mainImage)]
     : imagenes;
 
+  const categoriaPrincipalNombre =
+    plainSerie.categoriaPrincipalNombre ||
+    plainSerie.categoriaNombre ||
+    plainSerie.categoria ||
+    "Series";
+
+  const origenNombre =
+    plainSerie.origenNombre ||
+    plainSerie.paisNombre ||
+    plainSerie.country ||
+    "Variado";
+
+  const creadoresNombre = Array.isArray(plainSerie.creadoresNombre)
+    ? plainSerie.creadoresNombre.filter(Boolean)
+    : plainSerie.autor
+    ? plainSerie.autor
+        .split(",")
+        .map((creator) => creator.trim())
+        .filter(Boolean)
+    : [];
+
   return {
     ...plainSerie,
+
     id: plainSerie._id,
     _id: plainSerie._id,
+
     nombre: plainSerie.nombre,
     slug: plainSerie.slug,
 
     imagen: mainImage,
     imagenes: finalImages,
 
-    categoriaPrincipalNombre:
-      plainSerie.categoriaPrincipal?.nombre ||
-      plainSerie.categoriaPrincipalNombre ||
-      "Series",
+    categoriaPrincipalNombre,
+    categoriaNombre: categoriaPrincipalNombre,
 
-    subcategoriaNombre:
-      plainSerie.subcategoria?.nombre || plainSerie.subcategoriaNombre || "",
+    subcategoriaNombre: plainSerie.subcategoriaNombre || "",
 
-    origenNombre:
-      plainSerie.origen?.nombre || plainSerie.origenNombre || "Variado",
-
+    origenNombre,
     pais: plainSerie.pais || "V",
-    tipo: plainSerie.tipo || "Historia",
+
+    tipo: plainSerie.tipo || categoriaPrincipalNombre || "Historia",
     genero: plainSerie.genero || "",
 
-    creadoresNombre:
-      plainSerie.creadoresNombre ||
-      plainSerie.creadores?.map((creator) => creator.nombre).filter(Boolean) ||
-      [],
+    creadoresNombre,
+    autor: creadoresNombre.join(", "),
 
-    autor:
-      plainSerie.autor ||
-      plainSerie.creadoresNombre?.join(", ") ||
-      plainSerie.creadores?.map((creator) => creator.nombre).join(", ") ||
-      "",
+    destacada: Boolean(plainSerie.destacada),
 
-    activa: plainSerie.activa !== false,
-    activo: plainSerie.activo !== false && plainSerie.activa !== false
+    activa: plainSerie.activa !== false && plainSerie.activo !== false,
+    activo: plainSerie.activa !== false && plainSerie.activo !== false,
+
+    orden: Number(plainSerie.orden || 0)
   };
 };
 
@@ -154,6 +185,17 @@ const buildSeriesPayload = (body = {}) => {
   const imagenes = normalizeImages(body);
   const imagen = getTextValue(body.imagen, body.image, imagenes[0]);
 
+  const creadoresNombre = Array.isArray(body.creadoresNombre)
+    ? body.creadoresNombre
+        .map((creator) => creator?.toString().trim())
+        .filter(Boolean)
+    : body.autor
+    ? body.autor
+        .split(",")
+        .map((creator) => creator.trim())
+        .filter(Boolean)
+    : [];
+
   return {
     nombre: getTextValue(body.nombre, body.name),
     descripcion: getTextValue(body.descripcion, body.description),
@@ -169,23 +211,17 @@ const buildSeriesPayload = (body = {}) => {
 
     origen: getOptionalObjectId(origenValue),
     origenNombre,
+
     pais: getTextValue(body.pais, body.countryCode, "V"),
 
-    tipo: getTextValue(body.tipo, "Historia"),
+    tipo: getTextValue(body.tipo, categoriaPrincipalNombre, "Historia"),
     genero: getTextValue(body.genero),
 
     creadores: Array.isArray(body.creadores)
       ? body.creadores.filter(isValidObjectId)
       : [],
 
-    creadoresNombre: Array.isArray(body.creadoresNombre)
-      ? body.creadoresNombre.filter(Boolean)
-      : body.autor
-      ? body.autor
-          .split(",")
-          .map((creator) => creator.trim())
-          .filter(Boolean)
-      : [],
+    creadoresNombre,
 
     destacada: Boolean(body.destacada),
 
@@ -259,9 +295,10 @@ const getSeries = async (req, res) => {
       }
     }
 
-    const series = await populateSeries(
-      Series.find(filter).sort({ orden: 1, nombre: 1 })
-    );
+    const series = await Series.find(filter).sort({
+      orden: 1,
+      nombre: 1
+    });
 
     res.json({
       message: "Lista de series obtenida correctamente",
@@ -269,6 +306,8 @@ const getSeries = async (req, res) => {
       series: series.map(normalizeSerieResponse)
     });
   } catch (error) {
+    console.error("Error al obtener series:", error);
+
     res.status(500).json({
       message: "Error al obtener series",
       error: error.message
@@ -282,7 +321,7 @@ const getSeriesById = async (req, res) => {
       ? { _id: req.params.id }
       : { slug: req.params.id };
 
-    const serie = await populateSeries(Series.findOne(query));
+    const serie = await Series.findOne(query);
 
     if (!serie) {
       return res.status(404).json({
@@ -295,6 +334,8 @@ const getSeriesById = async (req, res) => {
       serie: normalizeSerieResponse(serie)
     });
   } catch (error) {
+    console.error("Error al obtener serie:", error);
+
     res.status(500).json({
       message: "Error al obtener serie",
       error: error.message
@@ -327,13 +368,13 @@ const createSeries = async (req, res) => {
       slug
     });
 
-    const populatedSerie = await populateSeries(Series.findById(serie._id));
-
     res.status(201).json({
       message: "Serie creada correctamente",
-      serie: normalizeSerieResponse(populatedSerie)
+      serie: normalizeSerieResponse(serie)
     });
   } catch (error) {
+    console.error("Error al crear serie:", error);
+
     res.status(500).json({
       message: "Error al crear serie",
       error: error.message
@@ -379,13 +420,13 @@ const updateSeries = async (req, res) => {
 
     await serie.save();
 
-    const populatedSerie = await populateSeries(Series.findById(serie._id));
-
     res.json({
       message: "Serie actualizada correctamente",
-      serie: normalizeSerieResponse(populatedSerie)
+      serie: normalizeSerieResponse(serie)
     });
   } catch (error) {
+    console.error("Error al actualizar serie:", error);
+
     res.status(500).json({
       message: "Error al actualizar serie",
       error: error.message
@@ -413,6 +454,8 @@ const deleteSeries = async (req, res) => {
       serie: normalizeSerieResponse(serie)
     });
   } catch (error) {
+    console.error("Error al desactivar serie:", error);
+
     res.status(500).json({
       message: "Error al desactivar serie",
       error: error.message
