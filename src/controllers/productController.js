@@ -63,9 +63,7 @@ const normalizeImages = (imagenes = []) => {
           url: image,
           preview: image,
           finalPreview: image,
-          storage: image.startsWith("data:")
-            ? "local-data-url"
-            : "external"
+          storage: image.startsWith("data:") ? "local-data-url" : "external"
         };
       }
 
@@ -107,20 +105,12 @@ const normalizeImages = (imagenes = []) => {
 const shouldReplaceImages = (body = {}, includeImages = false) => {
   if (includeImages) return true;
 
-  const hasImagesField = Object.prototype.hasOwnProperty.call(body, "imagenes");
-
-  if (!hasImagesField) return false;
-
-  const explicitlyTouchedImages =
+  return (
     body.replaceImages === true ||
     body.reemplazarImagenes === true ||
     body.imagenesTouched === true ||
-    body.imagesTouched === true;
-
-  const hasRealImages =
-    Array.isArray(body.imagenes) && body.imagenes.length > 0;
-
-  return explicitlyTouchedImages || hasRealImages;
+    body.imagesTouched === true
+  );
 };
 
 const buildProductPayload = (body = {}, options = {}) => {
