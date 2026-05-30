@@ -18,6 +18,12 @@ const getTextValue = (...values) => {
     (value) => value !== undefined && value !== null && value !== ""
   );
 
+  if (Array.isArray(found)) return found.join(", ").trim();
+
+  if (found && typeof found === "object") {
+    return found.nombre || found.titulo || found.name || "";
+  }
+
   return found ? found.toString().trim() : "";
 };
 
@@ -29,19 +35,98 @@ const normalizeDate = (value) => {
   return Number.isNaN(date.getTime()) ? null : date;
 };
 
+const getImageSource = (image) => {
+  if (!image) return "";
+
+  if (typeof image === "string") return image.trim();
+
+  if (image && typeof image === "object") {
+    return (
+      image.finalPreview ||
+      image.url ||
+      image.preview ||
+      image.src ||
+      image.imagen ||
+      ""
+    ).trim();
+  }
+
+  return "";
+};
+
+const normalizeImages = (images = []) => {
+  if (!Array.isArray(images)) return [];
+
+  const seen = new Set();
+
+  return images
+    .map(getImageSource)
+    .filter(Boolean)
+    .filter((image) => {
+      if (seen.has(image)) return false;
+
+      seen.add(image);
+      return true;
+    });
+};
+
+const normalizeStringArray = (value) => {
+  if (Array.isArray(value)) {
+    return value.map((item) => getTextValue(item)).filter(Boolean);
+  }
+
+  const text = getTextValue(value);
+
+  if (!text) return [];
+
+  return text
+    .split(",")
+    .map((item) => item.trim())
+    .filter(Boolean);
+};
+
+const shouldReplaceImages = (body = {}, includeImages = false) => {
+  if (includeImages) return true;
+
+  return (
+    body.imagenesTouched === true ||
+    body.imagesTouched === true ||
+    body.replaceImages === true ||
+    body.reemplazarImagenes === true
+  );
+};
+
 const populateEvent = (query) => {
   return query
     .populate("categoria", "nombre slug")
-    .populate({
-      path: "serie",
-      select: "nombre slug creadores",
-      populate: {
-        path: "creadores",
-        select: "nombre slug tipo"
-      }
-    })
+    .populate("serie", "nombre slug pais origenNombre")
+    .populate("series", "nombre slug pais origenNombre")
     .populate("origen", "nombre slug code")
     .populate("productos", "nombre slug precioReferencial imagenes activo");
+};
+
+const getSeriesNames = (plainEvent) => {
+  const names = [];
+
+  if (Array.isArray(plainEvent.series)) {
+    plainEvent.series.forEach((serie) => {
+      const name = getTextValue(serie?.nombre, serie?.name);
+      if (name) names.push(name);
+    });
+  }
+
+  if (Array.isArray(plainEvent.seriesNombre)) {
+    names.push(...plainEvent.seriesNombre.filter(Boolean));
+  }
+
+  const legacySerieName = getTextValue(
+    plainEvent.serie?.nombre,
+    plainEvent.serieNombre
+  );
+
+  if (legacySerieName) names.push(legacySerieName);
+
+  return [...new Set(names)];
 };
 
 const normalizeEventResponse = (event) => {
@@ -49,57 +134,100 @@ const normalizeEventResponse = (event) => {
 
   if (!plainEvent) return null;
 
+  const coverImage = getImageSource(plainEvent.imagen);
+
+  const carouselImages = normalizeImages(plainEvent.imagenes).filter(
+    (image) => image !== coverImage
+  );
+
+  const seriesNombre = getSeriesNames(plainEvent);
+
   return {
     ...plainEvent,
+
     id: plainEvent._id,
     _id: plainEvent._id,
 
     nombre: plainEvent.titulo,
     titulo: plainEvent.titulo,
 
+    imagen: coverImage,
+    imagenes: carouselImages,
+
     categoriaNombre:
       plainEvent.categoria?.nombre || plainEvent.categoriaNombre || "Eventos",
 
-    serieNombre:
-      plainEvent.serie?.nombre || plainEvent.serieNombre || "",
+    serieNombre: seriesNombre[0] || "",
+    seriesNombre,
 
     origenNombre:
       plainEvent.origen?.nombre || plainEvent.origenNombre || "Variado",
 
     pais: plainEvent.pais || "V",
+    tipoEvento: plainEvent.tipoEvento || "Otro",
     activo: plainEvent.activo !== false
   };
 };
 
-const resolveSerieData = async (serieValue, serieNombreValue = "") => {
-  if (isValidObjectId(serieValue)) {
-    const serie = await Series.findById(serieValue);
+const resolveSeriesData = async (body = {}) => {
+  const rawSeriesIds = Array.isArray(body.series)
+    ? body.series
+    : body.series
+    ? [body.series]
+    : [];
 
-    return {
-      serie: serie?._id || serieValue,
-      serieNombre: serieNombreValue || serie?.nombre || ""
-    };
+  const rawSeriesNames = [
+    ...normalizeStringArray(body.seriesNombre),
+    ...normalizeStringArray(body.seriesTexto),
+    ...normalizeStringArray(body.seriesNames)
+  ];
+
+  const legacySerieValue = body.serie;
+  const legacySerieNombre = body.serieNombre;
+
+  if (legacySerieValue) {
+    if (isValidObjectId(legacySerieValue)) {
+      rawSeriesIds.unshift(legacySerieValue);
+    } else {
+      rawSeriesNames.unshift(getTextValue(legacySerieValue));
+    }
   }
 
+  if (legacySerieNombre) {
+    rawSeriesNames.unshift(getTextValue(legacySerieNombre));
+  }
+
+  const validSeriesIds = rawSeriesIds.filter(isValidObjectId);
+
+  const fetchedSeries = validSeriesIds.length
+    ? await Series.find({ _id: { $in: validSeriesIds } }).select("nombre")
+    : [];
+
+  const fetchedNames = fetchedSeries.map((serie) => serie.nombre).filter(Boolean);
+
+  const seriesIds = [...new Set(validSeriesIds)];
+
+  const seriesNombre = [
+    ...new Set([...fetchedNames, ...rawSeriesNames].filter(Boolean))
+  ];
+
   return {
-    serie: null,
-    serieNombre: getTextValue(serieNombreValue, serieValue)
+    series: seriesIds,
+    seriesNombre,
+    serie: seriesIds[0] || null,
+    serieNombre: seriesNombre[0] || ""
   };
 };
 
-const buildEventPayload = async (body = {}) => {
+const buildEventPayload = async (body = {}, options = {}) => {
   const categoriaValue = body.categoria || body.categoriaPrincipal || "";
-  const origenValue = body.origen || body.pais || "";
-  const serieData = await resolveSerieData(body.serie, body.serieNombre);
+  const origenValue = body.origen || "";
 
-  return {
+  const seriesData = await resolveSeriesData(body);
+
+  const payload = {
     titulo: getTextValue(body.titulo, body.nombre, body.name),
     descripcion: getTextValue(body.descripcion, body.description),
-    imagen: getTextValue(body.imagen, body.image),
-
-    imagenes: Array.isArray(body.imagenes)
-      ? body.imagenes.filter(Boolean)
-      : [],
 
     categoria: getOptionalObjectId(categoriaValue),
     categoriaNombre: getTextValue(
@@ -108,18 +236,21 @@ const buildEventPayload = async (body = {}) => {
       "Eventos"
     ),
 
-    serie: serieData.serie,
-    serieNombre: serieData.serieNombre,
+    serie: seriesData.serie,
+    serieNombre: seriesData.serieNombre,
+    series: seriesData.series,
+    seriesNombre: seriesData.seriesNombre,
 
     origen: getOptionalObjectId(origenValue),
     origenNombre: getTextValue(
       body.origenNombre,
       body.paisNombre,
+      body.country,
       isValidObjectId(origenValue) ? "" : origenValue,
       "Variado"
     ),
 
-    pais: getTextValue(body.pais, body.countryCode, "V"),
+    pais: getTextValue(body.pais, body.countryCode, body.origenNombre, "V"),
 
     tipoEvento: getTextValue(body.tipoEvento, body.tipo, "Otro"),
 
@@ -139,6 +270,18 @@ const buildEventPayload = async (body = {}) => {
         ? Boolean(body.activo)
         : true
   };
+
+  if (shouldReplaceImages(body, options.includeImages === true)) {
+    const coverImage = getImageSource(body.imagen || body.image);
+    const carouselImages = normalizeImages(body.imagenes).filter(
+      (image) => image !== coverImage
+    );
+
+    payload.imagen = coverImage;
+    payload.imagenes = carouselImages;
+  }
+
+  return payload;
 };
 
 const getEvents = async (req, res) => {
@@ -154,16 +297,19 @@ const getEvents = async (req, res) => {
     } = req.query;
 
     const filter = {};
+    const andConditions = [];
 
     if (activos !== "false") {
       filter.activo = true;
     }
 
     if (search) {
-      filter.$or = [
-        { titulo: { $regex: search, $options: "i" } },
-        { descripcion: { $regex: search, $options: "i" } }
-      ];
+      andConditions.push({
+        $or: [
+          { titulo: { $regex: search, $options: "i" } },
+          { descripcion: { $regex: search, $options: "i" } }
+        ]
+      });
     }
 
     if (categoria) {
@@ -176,9 +322,16 @@ const getEvents = async (req, res) => {
 
     if (serie) {
       if (isValidObjectId(serie)) {
-        filter.serie = serie;
+        andConditions.push({
+          $or: [{ serie }, { series: serie }]
+        });
       } else {
-        filter.serieNombre = { $regex: serie, $options: "i" };
+        andConditions.push({
+          $or: [
+            { serieNombre: { $regex: serie, $options: "i" } },
+            { seriesNombre: { $regex: serie, $options: "i" } }
+          ]
+        });
       }
     }
 
@@ -193,6 +346,10 @@ const getEvents = async (req, res) => {
     if (estado) filter.estado = estado;
     if (destacados !== undefined) filter.destacado = destacados === "true";
 
+    if (andConditions.length > 0) {
+      filter.$and = andConditions;
+    }
+
     const events = await populateEvent(
       Event.find(filter).sort({ fechaInicio: 1, createdAt: -1 })
     );
@@ -203,6 +360,8 @@ const getEvents = async (req, res) => {
       events: events.map(normalizeEventResponse)
     });
   } catch (error) {
+    console.error("Error al obtener eventos:", error);
+
     res.status(500).json({
       message: "Error al obtener eventos",
       error: error.message
@@ -229,6 +388,8 @@ const getEventById = async (req, res) => {
       event: normalizeEventResponse(event)
     });
   } catch (error) {
+    console.error("Error al obtener evento:", error);
+
     res.status(500).json({
       message: "Error al obtener evento",
       error: error.message
@@ -238,7 +399,9 @@ const getEventById = async (req, res) => {
 
 const createEvent = async (req, res) => {
   try {
-    const payload = await buildEventPayload(req.body);
+    const payload = await buildEventPayload(req.body, {
+      includeImages: true
+    });
 
     if (!payload.titulo) {
       return res.status(400).json({
@@ -273,6 +436,8 @@ const createEvent = async (req, res) => {
       event: normalizeEventResponse(populatedEvent)
     });
   } catch (error) {
+    console.error("Error al crear evento:", error);
+
     res.status(500).json({
       message: "Error al crear evento",
       error: error.message
@@ -282,7 +447,9 @@ const createEvent = async (req, res) => {
 
 const updateEvent = async (req, res) => {
   try {
-    const payload = await buildEventPayload(req.body);
+    const payload = await buildEventPayload(req.body, {
+      includeImages: false
+    });
 
     const event = await Event.findById(req.params.id);
 
@@ -330,6 +497,8 @@ const updateEvent = async (req, res) => {
       event: normalizeEventResponse(populatedEvent)
     });
   } catch (error) {
+    console.error("Error al actualizar evento:", error);
+
     res.status(500).json({
       message: "Error al actualizar evento",
       error: error.message
@@ -360,6 +529,8 @@ const deleteEvent = async (req, res) => {
       event: normalizeEventResponse(event)
     });
   } catch (error) {
+    console.error("Error al desactivar evento:", error);
+
     res.status(500).json({
       message: "Error al desactivar evento",
       error: error.message

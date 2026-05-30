@@ -56,6 +56,18 @@ const eventSchema = new mongoose.Schema(
       default: ""
     },
 
+    series: [
+      {
+        type: mongoose.Schema.Types.ObjectId,
+        ref: "Series"
+      }
+    ],
+
+    seriesNombre: {
+      type: [String],
+      default: []
+    },
+
     origen: {
       type: mongoose.Schema.Types.ObjectId,
       ref: "Origin",

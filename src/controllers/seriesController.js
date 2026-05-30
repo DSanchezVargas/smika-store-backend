@@ -25,46 +25,65 @@ const getTextValue = (...values) => {
   return found ? found.toString().trim() : "";
 };
 
-const normalizeImages = (body = {}) => {
-  const rawImages = Array.isArray(body.imagenes)
-    ? body.imagenes
-    : Array.isArray(body.images)
-    ? body.images
-    : [];
+const getImageSource = (image) => {
+  if (!image) return "";
 
-  const imagesFromArray = rawImages
-    .map((image) => {
-      if (typeof image === "string") return image.trim();
+  if (typeof image === "string") return image.trim();
 
-      if (image && typeof image === "object") {
-        return (
-          image.finalPreview ||
-          image.url ||
-          image.preview ||
-          image.src ||
-          image.imagen ||
-          ""
-        ).trim();
-      }
+  if (image && typeof image === "object") {
+    return (
+      image.finalPreview ||
+      image.url ||
+      image.preview ||
+      image.src ||
+      image.imagen ||
+      ""
+    ).trim();
+  }
 
-      return "";
-    })
-    .filter(Boolean);
+  return "";
+};
 
-  const imagesFromText = getTextValue(body.imagenesTexto)
+const normalizeImages = (images = []) => {
+  if (!Array.isArray(images)) return [];
+
+  const seen = new Set();
+
+  return images
+    .map(getImageSource)
+    .filter(Boolean)
+    .filter((image) => {
+      if (seen.has(image)) return false;
+
+      seen.add(image);
+      return true;
+    });
+};
+
+const normalizeStringArray = (value) => {
+  if (Array.isArray(value)) {
+    return value.map((item) => getTextValue(item)).filter(Boolean);
+  }
+
+  const text = getTextValue(value);
+
+  if (!text) return [];
+
+  return text
     .split(",")
-    .map((image) => image.trim())
+    .map((item) => item.trim())
     .filter(Boolean);
+};
 
-  const mainImage = getTextValue(body.imagen, body.image);
+const shouldReplaceImages = (body = {}, includeImages = false) => {
+  if (includeImages) return true;
 
-  const normalizedImages = [
-    mainImage,
-    ...imagesFromArray,
-    ...imagesFromText
-  ].filter(Boolean);
-
-  return [...new Set(normalizedImages)];
+  return (
+    body.imagenesTouched === true ||
+    body.imagesTouched === true ||
+    body.replaceImages === true ||
+    body.reemplazarImagenes === true
+  );
 };
 
 const normalizeSerieResponse = (serie) => {
@@ -72,32 +91,11 @@ const normalizeSerieResponse = (serie) => {
 
   if (!plainSerie) return null;
 
-  const imagenes = Array.isArray(plainSerie.imagenes)
-    ? plainSerie.imagenes
-        .map((image) => {
-          if (typeof image === "string") return image;
+  const coverImage = getImageSource(plainSerie.imagen);
 
-          if (image && typeof image === "object") {
-            return (
-              image.finalPreview ||
-              image.url ||
-              image.preview ||
-              image.src ||
-              image.imagen ||
-              ""
-            );
-          }
-
-          return "";
-        })
-        .filter(Boolean)
-    : [];
-
-  const mainImage = plainSerie.imagen || imagenes[0] || "";
-
-  const finalImages = mainImage
-    ? [mainImage, ...imagenes.filter((image) => image !== mainImage)]
-    : imagenes;
+  const carouselImages = normalizeImages(plainSerie.imagenes).filter(
+    (image) => image !== coverImage
+  );
 
   const categoriaPrincipalNombre =
     plainSerie.categoriaPrincipalNombre ||
@@ -129,8 +127,8 @@ const normalizeSerieResponse = (serie) => {
     nombre: plainSerie.nombre,
     slug: plainSerie.slug,
 
-    imagen: mainImage,
-    imagenes: finalImages,
+    imagen: coverImage,
+    imagenes: carouselImages,
 
     categoriaPrincipalNombre,
     categoriaNombre: categoriaPrincipalNombre,
@@ -155,12 +153,12 @@ const normalizeSerieResponse = (serie) => {
   };
 };
 
-const buildSeriesPayload = (body = {}) => {
+const buildSeriesPayload = (body = {}, options = {}) => {
   const categoriaPrincipalValue =
     body.categoriaPrincipal || body.categoria || "";
 
   const subcategoriaValue = body.subcategoria || "";
-  const origenValue = body.origen || body.pais || "";
+  const origenValue = body.origen || "";
 
   const categoriaPrincipalNombre = getTextValue(
     body.categoriaPrincipalNombre,
@@ -182,29 +180,17 @@ const buildSeriesPayload = (body = {}) => {
     "Variado"
   );
 
-  const imagenes = normalizeImages(body);
-  const imagen = getTextValue(body.imagen, body.image, imagenes[0]);
+  const creadoresNombre = normalizeStringArray(
+    body.creadoresNombre || body.autor
+  );
 
-  const creadoresNombre = Array.isArray(body.creadoresNombre)
-    ? body.creadoresNombre
-        .map((creator) => creator?.toString().trim())
-        .filter(Boolean)
-    : body.autor
-    ? body.autor
-        .split(",")
-        .map((creator) => creator.trim())
-        .filter(Boolean)
-    : [];
-
-  return {
+  const payload = {
     nombre: getTextValue(body.nombre, body.name),
     descripcion: getTextValue(body.descripcion, body.description),
 
-    imagen,
-    imagenes,
-
     categoriaPrincipal: getOptionalObjectId(categoriaPrincipalValue),
     categoriaPrincipalNombre,
+    categoriaNombre: categoriaPrincipalNombre,
 
     subcategoria: getOptionalObjectId(subcategoriaValue),
     subcategoriaNombre,
@@ -212,7 +198,7 @@ const buildSeriesPayload = (body = {}) => {
     origen: getOptionalObjectId(origenValue),
     origenNombre,
 
-    pais: getTextValue(body.pais, body.countryCode, "V"),
+    pais: getTextValue(body.pais, body.countryCode, origenNombre, "V"),
 
     tipo: getTextValue(body.tipo, categoriaPrincipalNombre, "Historia"),
     genero: getTextValue(body.genero),
@@ -244,6 +230,19 @@ const buildSeriesPayload = (body = {}) => {
         ? Number(body.orden)
         : 0
   };
+
+  if (shouldReplaceImages(body, options.includeImages === true)) {
+    const coverImage = getImageSource(body.imagen || body.image);
+
+    const carouselImages = normalizeImages(body.imagenes).filter(
+      (image) => image !== coverImage
+    );
+
+    payload.imagen = coverImage;
+    payload.imagenes = carouselImages;
+  }
+
+  return payload;
 };
 
 const getSeries = async (req, res) => {
@@ -345,7 +344,9 @@ const getSeriesById = async (req, res) => {
 
 const createSeries = async (req, res) => {
   try {
-    const payload = buildSeriesPayload(req.body);
+    const payload = buildSeriesPayload(req.body, {
+      includeImages: true
+    });
 
     if (!payload.nombre) {
       return res.status(400).json({
@@ -384,7 +385,9 @@ const createSeries = async (req, res) => {
 
 const updateSeries = async (req, res) => {
   try {
-    const payload = buildSeriesPayload(req.body);
+    const payload = buildSeriesPayload(req.body, {
+      includeImages: false
+    });
 
     const serie = await Series.findById(req.params.id);
 

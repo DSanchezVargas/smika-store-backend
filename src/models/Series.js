@@ -44,6 +44,12 @@ const seriesSchema = new mongoose.Schema(
       default: "Series"
     },
 
+    categoriaNombre: {
+      type: String,
+      trim: true,
+      default: "Series"
+    },
+
     subcategoria: {
       type: mongoose.Schema.Types.ObjectId,
       ref: "Category",

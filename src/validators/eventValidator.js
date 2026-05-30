@@ -1,16 +1,28 @@
 const { body } = require("express-validator");
 
 const optionalText = (field, message) =>
-  body(field).optional({ nullable: true, checkFalsy: true }).isString().withMessage(message);
+  body(field)
+    .optional({ nullable: true, checkFalsy: true })
+    .isString()
+    .withMessage(message);
 
 const optionalBoolean = (field, message) =>
   body(field).optional().isBoolean().withMessage(message);
 
 const optionalDate = (field, message) =>
-  body(field).optional({ nullable: true, checkFalsy: true }).isISO8601().withMessage(message);
+  body(field)
+    .optional({ nullable: true, checkFalsy: true })
+    .isISO8601()
+    .withMessage(message);
 
 const optionalMongoId = (field, message) =>
-  body(field).optional({ nullable: true, checkFalsy: true }).isMongoId().withMessage(message);
+  body(field)
+    .optional({ nullable: true, checkFalsy: true })
+    .isMongoId()
+    .withMessage(message);
+
+const optionalArray = (field, message) =>
+  body(field).optional().isArray().withMessage(message);
 
 const createEventValidator = [
   body("titulo")
@@ -26,16 +38,43 @@ const createEventValidator = [
   optionalText("descripcion", "La descripción del evento debe ser texto"),
   optionalText("imagen", "La imagen debe ser texto"),
 
-  body("imagenes")
-    .optional()
-    .isArray()
-    .withMessage("Las imágenes deben enviarse como arreglo"),
+  optionalArray("imagenes", "Las imágenes deben enviarse como arreglo"),
+
+  optionalBoolean(
+    "imagenesTouched",
+    "El campo imagenesTouched debe ser verdadero o falso"
+  ),
+
+  optionalBoolean(
+    "imagesTouched",
+    "El campo imagesTouched debe ser verdadero o falso"
+  ),
+
+  optionalBoolean(
+    "replaceImages",
+    "El campo replaceImages debe ser verdadero o falso"
+  ),
+
+  optionalBoolean(
+    "reemplazarImagenes",
+    "El campo reemplazarImagenes debe ser verdadero o falso"
+  ),
 
   optionalMongoId("categoria", "La categoría debe ser un ID válido"),
   optionalText("categoriaNombre", "El nombre de la categoría debe ser texto"),
 
   optionalText("serie", "La serie debe enviarse como texto o ID"),
   optionalText("serieNombre", "El nombre de la serie debe ser texto"),
+
+  optionalArray("series", "Las series deben enviarse como arreglo"),
+  optionalArray(
+    "seriesNombre",
+    "Los nombres de series deben enviarse como arreglo"
+  ),
+  optionalArray(
+    "seriesTexto",
+    "Los textos de series deben enviarse como arreglo"
+  ),
 
   optionalMongoId("origen", "El origen debe ser un ID válido"),
   optionalText("origenNombre", "El nombre de origen debe ser texto"),
@@ -55,10 +94,7 @@ const createEventValidator = [
   optionalBoolean("destacado", "El campo destacado debe ser verdadero o falso"),
   optionalBoolean("activo", "El campo activo debe ser verdadero o falso"),
 
-  body("productos")
-    .optional()
-    .isArray()
-    .withMessage("Los productos deben enviarse como arreglo"),
+  optionalArray("productos", "Los productos deben enviarse como arreglo"),
 
   body("productos.*")
     .optional()
