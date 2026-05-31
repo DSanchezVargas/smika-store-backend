@@ -263,7 +263,7 @@ const productSchema = new mongoose.Schema(
 
     disponibilidad: {
       type: String,
-      enum: ["stock", "preventa", "por_pedido", "agotado"],
+      trim: true,
       default: "stock"
     },
 
