@@ -5,12 +5,22 @@ const Series = require("../models/Series");
 const { createSlug } = require("../utils/slugHelper");
 const { emitSocketEvent } = require("../utils/socketHelper");
 
+const EVENT_STATES = ["proximo", "preventa", "activo", "finalizado", "cancelado"];
+
 const isValidObjectId = (value) => {
   return value && mongoose.Types.ObjectId.isValid(value);
 };
 
 const getOptionalObjectId = (value) => {
   return isValidObjectId(value) ? value : null;
+};
+
+const getObjectIdValue = (value) => {
+  if (!value) return "";
+
+  if (typeof value === "string") return value;
+
+  return value._id || value.id || "";
 };
 
 const getTextValue = (...values) => {
@@ -25,6 +35,16 @@ const getTextValue = (...values) => {
   }
 
   return found ? found.toString().trim() : "";
+};
+
+const normalizeEventStatus = (value) => {
+  const status = getTextValue(value, "proximo").toLowerCase();
+
+  if (status === "actual") return "activo";
+
+  if (EVENT_STATES.includes(status)) return status;
+
+  return "proximo";
 };
 
 const normalizeDate = (value) => {
@@ -102,7 +122,10 @@ const populateEvent = (query) => {
     .populate("serie", "nombre slug pais origenNombre")
     .populate("series", "nombre slug pais origenNombre")
     .populate("origen", "nombre slug code")
-    .populate("productos", "nombre slug precioReferencial imagenes activo");
+    .populate(
+      "productos",
+      "nombre slug precio precioReferencial tipo tipoProducto tiposProducto personajesNombre personajeNombre imagenes activo serieNombre eventoNombre"
+    );
 };
 
 const getSeriesNames = (plainEvent) => {
@@ -170,51 +193,81 @@ const normalizeEventResponse = (event) => {
 };
 
 const resolveSeriesData = async (body = {}) => {
-  const rawSeriesIds = Array.isArray(body.series)
-    ? body.series
-    : body.series
-    ? [body.series]
-    : [];
+  const rawSeriesIds = [];
+  const rawSeriesNames = [];
 
-  const rawSeriesNames = [
+  const collectSeriesValue = (value) => {
+    if (!value) return;
+
+    if (Array.isArray(value)) {
+      value.forEach(collectSeriesValue);
+      return;
+    }
+
+    if (value && typeof value === "object") {
+      const possibleId = getObjectIdValue(value);
+
+      if (isValidObjectId(possibleId)) {
+        rawSeriesIds.push(possibleId);
+      }
+
+      const possibleName = getTextValue(
+        value.nombre,
+        value.titulo,
+        value.name,
+        value.serieNombre
+      );
+
+      if (possibleName) {
+        rawSeriesNames.push(possibleName);
+      }
+
+      return;
+    }
+
+    const text = getTextValue(value);
+
+    if (!text) return;
+
+    if (isValidObjectId(text)) {
+      rawSeriesIds.push(text);
+    } else {
+      rawSeriesNames.push(text);
+    }
+  };
+
+  collectSeriesValue(body.series);
+  collectSeriesValue(body.serie);
+
+  rawSeriesNames.push(
     ...normalizeStringArray(body.seriesNombre),
     ...normalizeStringArray(body.seriesTexto),
-    ...normalizeStringArray(body.seriesNames)
-  ];
+    ...normalizeStringArray(body.seriesNames),
+    ...normalizeStringArray(body.serieNombre)
+  );
 
-  const legacySerieValue = body.serie;
-  const legacySerieNombre = body.serieNombre;
-
-  if (legacySerieValue) {
-    if (isValidObjectId(legacySerieValue)) {
-      rawSeriesIds.unshift(legacySerieValue);
-    } else {
-      rawSeriesNames.unshift(getTextValue(legacySerieValue));
-    }
-  }
-
-  if (legacySerieNombre) {
-    rawSeriesNames.unshift(getTextValue(legacySerieNombre));
-  }
-
-  const validSeriesIds = rawSeriesIds.filter(isValidObjectId);
+  const validSeriesIds = [...new Set(rawSeriesIds.filter(isValidObjectId))];
 
   const fetchedSeries = validSeriesIds.length
     ? await Series.find({ _id: { $in: validSeriesIds } }).select("nombre")
     : [];
 
-  const fetchedNames = fetchedSeries.map((serie) => serie.nombre).filter(Boolean);
+  const fetchedNamesById = new Map(
+    fetchedSeries.map((serie) => [serie._id.toString(), serie.nombre])
+  );
 
-  const seriesIds = [...new Set(validSeriesIds)];
+  const fetchedNames = validSeriesIds
+    .map((seriesId) => fetchedNamesById.get(seriesId.toString()))
+    .filter(Boolean);
 
   const seriesNombre = [
     ...new Set([...fetchedNames, ...rawSeriesNames].filter(Boolean))
   ];
 
   return {
-    series: seriesIds,
+    series: validSeriesIds,
     seriesNombre,
-    serie: seriesIds[0] || null,
+    serie: validSeriesIds[0] || null,
     serieNombre: seriesNombre[0] || ""
   };
 };
@@ -257,7 +310,7 @@ const buildEventPayload = async (body = {}, options = {}) => {
     fechaInicio: normalizeDate(body.fechaInicio),
     fechaFin: normalizeDate(body.fechaFin),
 
-    estado: getTextValue(body.estado, "proximo"),
+    estado: normalizeEventStatus(body.estado),
 
     destacado: Boolean(body.destacado),
 
@@ -343,7 +396,7 @@ const getEvents = async (req, res) => {
       }
     }
 
-    if (estado) filter.estado = estado;
+    if (estado) filter.estado = normalizeEventStatus(estado);
     if (destacados !== undefined) filter.destacado = destacados === "true";
 
     if (andConditions.length > 0) {
@@ -438,7 +491,7 @@ const createEvent = async (req, res) => {
   } catch (error) {
     console.error("Error al crear evento:", error);
 
-    res.status(500).json({
+    res.status(error.name === "ValidationError" ? 400 : 500).json({
       message: "Error al crear evento",
       error: error.message
     });
@@ -499,7 +552,7 @@ const updateEvent = async (req, res) => {
   } catch (error) {
     console.error("Error al actualizar evento:", error);
 
-    res.status(500).json({
+    res.status(error.name === "ValidationError" ? 400 : 500).json({
       message: "Error al actualizar evento",
       error: error.message
     });

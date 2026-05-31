@@ -1,5 +1,7 @@
 const mongoose = require("mongoose");
 
+const EVENT_STATES = ["proximo", "preventa", "activo", "finalizado", "cancelado"];
+
 const eventSchema = new mongoose.Schema(
   {
     titulo: {
@@ -56,12 +58,15 @@ const eventSchema = new mongoose.Schema(
       default: ""
     },
 
-    series: [
-      {
-        type: mongoose.Schema.Types.ObjectId,
-        ref: "Series"
-      }
-    ],
+    series: {
+      type: [
+        {
+          type: mongoose.Schema.Types.ObjectId,
+          ref: "Series"
+        }
+      ],
+      default: []
+    },
 
     seriesNombre: {
       type: [String],
@@ -104,7 +109,7 @@ const eventSchema = new mongoose.Schema(
 
     estado: {
       type: String,
-      enum: ["proximo", "preventa", "activo", "finalizado", "cancelado"],
+      enum: EVENT_STATES,
       default: "proximo"
     },
 
@@ -129,6 +134,22 @@ const eventSchema = new mongoose.Schema(
     timestamps: true
   }
 );
+
+eventSchema.pre("validate", function syncLegacySeriesFields(next) {
+  if (Array.isArray(this.series) && this.series.length > 0 && !this.serie) {
+    this.serie = this.series[0];
+  }
+
+  if (
+    Array.isArray(this.seriesNombre) &&
+    this.seriesNombre.length > 0 &&
+    !this.serieNombre
+  ) {
+    this.serieNombre = this.seriesNombre[0];
+  }
+
+  next();
+});
 
 eventSchema.set("toJSON", {
   virtuals: true
