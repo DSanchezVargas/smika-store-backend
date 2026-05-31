@@ -20,6 +20,12 @@ const getTextValue = (...values) => {
     (value) => value !== undefined && value !== null && value !== ""
   );
 
+  if (Array.isArray(found)) return found.join(", ").trim();
+
+  if (found && typeof found === "object") {
+    return found.nombre || found.titulo || found.name || "";
+  }
+
   return found ? found.toString().trim() : "";
 };
 
@@ -28,7 +34,43 @@ const getNumberValue = (...values) => {
     (value) => value !== undefined && value !== null && value !== ""
   );
 
-  return Number(found || 0);
+  const numberValue = Number(found || 0);
+
+  return Number.isNaN(numberValue) ? 0 : numberValue;
+};
+
+const getStockData = (body = {}) => {
+  const rawStock =
+    body.stock !== undefined && body.stock !== null ? body.stock : "";
+
+  const rawStockTexto =
+    body.stockTexto !== undefined && body.stockTexto !== null
+      ? body.stockTexto
+      : "";
+
+  const stockAsText = rawStock.toString().trim();
+  const explicitStockText = rawStockTexto.toString().trim();
+
+  if (stockAsText === "" && explicitStockText === "") {
+    return {
+      stock: 0,
+      stockTexto: ""
+    };
+  }
+
+  const numericStock = Number(stockAsText);
+
+  if (stockAsText !== "" && !Number.isNaN(numericStock)) {
+    return {
+      stock: Math.max(0, numericStock),
+      stockTexto: explicitStockText
+    };
+  }
+
+  return {
+    stock: 0,
+    stockTexto: explicitStockText || stockAsText
+  };
 };
 
 const normalizeEstado = (estado = "", disponibilidad = "") => {
@@ -96,7 +138,7 @@ const normalizeImages = (imagenes = []) => {
         },
         storage:
           image.storage ||
-          (imageUrl.startsWith("data:") ? "local-data-url" : "")
+          (imageUrl.startsWith("data:") ? "local-data-url" : "external")
       };
     })
     .filter((image) => image.url || image.finalPreview || image.preview);
@@ -152,7 +194,6 @@ const buildProductPayload = (body = {}, options = {}) => {
     body.origenTexto,
     body.pais,
     body.countryCode,
-    body.origen,
     isValidObjectId(body.origen) ? "" : body.origen
   );
 
@@ -161,6 +202,8 @@ const buildProductPayload = (body = {}, options = {}) => {
     body.tipo,
     body.type
   );
+
+  const stockData = getStockData(body);
 
   const payload = {
     nombre: getTextValue(body.nombre, body.name),
@@ -209,8 +252,10 @@ const buildProductPayload = (body = {}, options = {}) => {
     disponibilidad,
     estado,
 
-    stock: Number(body.stock || 0),
-    tiempoEstimado: body.tiempoEstimado || "",
+    stock: stockData.stock,
+    stockTexto: stockData.stockTexto,
+
+    tiempoEstimado: "",
 
     adulto: Boolean(body.adulto),
     esNuevo: body.esNuevo !== undefined ? Boolean(body.esNuevo) : true,
