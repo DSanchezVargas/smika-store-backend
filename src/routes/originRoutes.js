@@ -25,7 +25,7 @@ router.get("/:id", getOriginById);
 router.post(
   "/",
   protect,
-  authorizeRoles("admin"),
+  authorizeRoles("admin", "subadmin"),
   createOriginValidator,
   validateFields,
   createOrigin
@@ -34,7 +34,7 @@ router.post(
 router.put(
   "/:id",
   protect,
-  authorizeRoles("admin"),
+  authorizeRoles("admin", "subadmin"),
   updateOriginValidator,
   validateFields,
   updateOrigin
@@ -43,7 +43,7 @@ router.put(
 router.delete(
   "/:id",
   protect,
-  authorizeRoles("admin"),
+  authorizeRoles("admin", "subadmin"),
   deleteOrigin
 );
 

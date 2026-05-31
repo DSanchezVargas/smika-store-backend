@@ -25,7 +25,7 @@ router.get("/:id", getCreatorById);
 router.post(
   "/",
   protect,
-  authorizeRoles("admin"),
+  authorizeRoles("admin", "subadmin"),
   createCreatorValidator,
   validateFields,
   createCreator
@@ -34,7 +34,7 @@ router.post(
 router.put(
   "/:id",
   protect,
-  authorizeRoles("admin"),
+  authorizeRoles("admin", "subadmin"),
   updateCreatorValidator,
   validateFields,
   updateCreator
@@ -43,7 +43,7 @@ router.put(
 router.delete(
   "/:id",
   protect,
-  authorizeRoles("admin"),
+  authorizeRoles("admin", "subadmin"),
   deleteCreator
 );
 

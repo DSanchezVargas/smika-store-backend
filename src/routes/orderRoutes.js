@@ -44,21 +44,21 @@ router.get(
 router.get(
   "/",
   protect,
-  authorizeRoles("admin"),
+  authorizeRoles("admin", "subadmin"),
   getOrders
 );
 
 router.get(
   "/:id",
   protect,
-  authorizeRoles("admin"),
+  authorizeRoles("admin", "subadmin"),
   getOrderById
 );
 
 router.patch(
   "/:id/status",
   protect,
-  authorizeRoles("admin"),
+  authorizeRoles("admin", "subadmin"),
   updateOrderStatusValidator,
   validateFields,
   updateOrderStatus
