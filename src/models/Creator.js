@@ -1,60 +1,55 @@
-const { body } = require("express-validator");
+const mongoose = require("mongoose");
 
-const createEventValidator = [
-  body("titulo")
-    .notEmpty()
-    .withMessage("El título del evento es obligatorio")
-    .isLength({ min: 2 })
-    .withMessage("El título debe tener al menos 2 caracteres"),
+const creatorSchema = new mongoose.Schema(
+  {
+    nombre: {
+      type: String,
+      required: [true, "El nombre del autor o creador es obligatorio"],
+      trim: true
+    },
 
-  body("descripcion")
-    .notEmpty()
-    .withMessage("La descripción del evento es obligatoria"),
+    slug: {
+      type: String,
+      required: true,
+      unique: true,
+      lowercase: true,
+      trim: true
+    },
 
-  body("imagen")
-    .optional()
-    .isString()
-    .withMessage("La imagen debe ser una ruta generada por el sistema"),
+    tipo: {
+      type: String,
+      trim: true,
+      default: "Autor"
+    },
 
-  body("tipoEvento")
-    .optional()
-    .isString()
-    .withMessage("El tipo de evento debe ser texto"),
+    descripcion: {
+      type: String,
+      trim: true,
+      default: ""
+    },
 
-  body("pais")
-    .optional()
-    .isString()
-    .withMessage("El país u origen debe ser texto"),
+    paisOrigen: {
+      type: String,
+      trim: true,
+      default: ""
+    },
 
-  body("serie")
-    .optional({ nullable: true, checkFalsy: true })
-    .isMongoId()
-    .withMessage("La serie debe ser un ID válido"),
+    activo: {
+      type: Boolean,
+      default: true
+    }
+  },
+  {
+    timestamps: true
+  }
+);
 
-  body("fechaInicio")
-    .optional({ nullable: true, checkFalsy: true })
-    .isISO8601()
-    .withMessage("La fecha de inicio debe tener un formato válido"),
+creatorSchema.set("toJSON", {
+  virtuals: true
+});
 
-  body("fechaFin")
-    .optional({ nullable: true, checkFalsy: true })
-    .isISO8601()
-    .withMessage("La fecha de fin debe tener un formato válido"),
+creatorSchema.set("toObject", {
+  virtuals: true
+});
 
-  body("estado")
-    .optional()
-    .isIn(["proximo", "activo", "finalizado", "cancelado"])
-    .withMessage("El estado del evento no es válido"),
-
-  body("destacado")
-    .optional()
-    .isBoolean()
-    .withMessage("El campo destacado debe ser verdadero o falso")
-];
-
-const updateEventValidator = createEventValidator;
-
-module.exports = {
-  createEventValidator,
-  updateEventValidator
-};
+module.exports = mongoose.model("Creator", creatorSchema);
