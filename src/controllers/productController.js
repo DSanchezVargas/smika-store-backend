@@ -1,18 +1,32 @@
 const mongoose = require("mongoose");
 
 const Product = require("../models/Product");
+const Event = require("../models/Event");
 const Notification = require("../models/Notification");
 const { createSlug } = require("../utils/slugHelper");
 const { emitSocketEvent } = require("../utils/socketHelper");
 
 const LOW_STOCK_LIMIT = 5;
+const PERU_TIME_ZONE = "America/Lima";
 
 const isValidObjectId = (value) => {
   return value && mongoose.Types.ObjectId.isValid(value);
 };
 
+const getObjectIdValue = (value) => {
+  if (!value) return "";
+
+  if (typeof value === "object") {
+    return value._id || value.id || "";
+  }
+
+  return value;
+};
+
 const getOptionalObjectId = (value) => {
-  return isValidObjectId(value) ? value : null;
+  const objectIdValue = getObjectIdValue(value);
+
+  return isValidObjectId(objectIdValue) ? objectIdValue : null;
 };
 
 const getTextValue = (...values) => {
@@ -29,6 +43,57 @@ const getNumberValue = (...values) => {
   );
 
   return Number(found || 0);
+};
+
+const getOptionalBoolean = (...values) => {
+  const found = values.find(
+    (value) => value !== undefined && value !== null && value !== ""
+  );
+
+  if (found === undefined || found === null || found === "") {
+    return undefined;
+  }
+
+  if (typeof found === "boolean") return found;
+
+  if (typeof found === "number") return found === 1;
+
+  const cleanValue = found.toString().trim().toLowerCase();
+
+  if (["true", "1", "si", "sí", "yes", "on"].includes(cleanValue)) {
+    return true;
+  }
+
+  if (["false", "0", "no", "off"].includes(cleanValue)) {
+    return false;
+  }
+
+  return Boolean(found);
+};
+
+const getPeruDateKey = (date = new Date()) => {
+  const parts = new Intl.DateTimeFormat("en-US", {
+    timeZone: PERU_TIME_ZONE,
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit"
+  }).formatToParts(date);
+
+  const year = parts.find((part) => part.type === "year")?.value || "";
+  const month = parts.find((part) => part.type === "month")?.value || "";
+  const day = parts.find((part) => part.type === "day")?.value || "";
+
+  return `${year}-${month}-${day}`;
+};
+
+const getStoredDateKey = (value) => {
+  if (!value) return "";
+
+  const date = new Date(value);
+
+  if (Number.isNaN(date.getTime())) return "";
+
+  return date.toISOString().slice(0, 10);
 };
 
 const normalizeEstado = (estado = "", disponibilidad = "") => {
@@ -51,6 +116,27 @@ const normalizeDisponibilidad = (disponibilidad = "", estado = "") => {
   if (cleanEstado.includes("agotado")) return "agotado";
 
   return "stock";
+};
+
+const getAutomaticAvailabilityFromEvent = (event) => {
+  if (!event || !event.fechaInicio) return null;
+
+  const todayInPeru = getPeruDateKey();
+  const eventStartDate = getStoredDateKey(event.fechaInicio);
+
+  if (!eventStartDate) return null;
+
+  if (todayInPeru >= eventStartDate) {
+    return {
+      disponibilidad: "por_pedido",
+      estado: "Por pedido"
+    };
+  }
+
+  return {
+    disponibilidad: "preventa",
+    estado: "Preventa"
+  };
 };
 
 const normalizeImages = (imagenes = []) => {
@@ -113,6 +199,90 @@ const shouldReplaceImages = (body = {}, includeImages = false) => {
   );
 };
 
+const applyAutomaticAvailabilityToPayload = async (
+  payload = {},
+  currentProduct = null
+) => {
+  const syncEnabled =
+    payload.sincronizarDisponibilidadEvento !== undefined
+      ? payload.sincronizarDisponibilidadEvento
+      : currentProduct?.sincronizarDisponibilidadEvento !== false;
+
+  if (!syncEnabled) {
+    return payload;
+  }
+
+  const eventId = getObjectIdValue(payload.evento || currentProduct?.evento);
+
+  if (!isValidObjectId(eventId)) {
+    return payload;
+  }
+
+  const event = await Event.findById(eventId).select("fechaInicio");
+
+  const automaticAvailability = getAutomaticAvailabilityFromEvent(event);
+
+  if (!automaticAvailability) {
+    return payload;
+  }
+
+  payload.disponibilidad = automaticAvailability.disponibilidad;
+  payload.estado = automaticAvailability.estado;
+
+  return payload;
+};
+
+const syncProductAvailabilityByEvent = async (product) => {
+  if (!product) return product;
+
+  if (product.sincronizarDisponibilidadEvento === false) {
+    return product;
+  }
+
+  if (product.activo === false || product.estado === "Inactivo") {
+    return product;
+  }
+
+  const eventId = getObjectIdValue(product.evento);
+
+  if (!isValidObjectId(eventId)) {
+    return product;
+  }
+
+  let event = product.evento;
+
+  if (!event || !event.fechaInicio) {
+    event = await Event.findById(eventId).select("fechaInicio");
+  }
+
+  const automaticAvailability = getAutomaticAvailabilityFromEvent(event);
+
+  if (!automaticAvailability) {
+    return product;
+  }
+
+  const mustUpdate =
+    product.disponibilidad !== automaticAvailability.disponibilidad ||
+    product.estado !== automaticAvailability.estado;
+
+  if (!mustUpdate) {
+    return product;
+  }
+
+  product.disponibilidad = automaticAvailability.disponibilidad;
+  product.estado = automaticAvailability.estado;
+
+  await product.save();
+
+  return product;
+};
+
+const syncProductsAvailabilityByEvent = async (products = []) => {
+  await Promise.all(products.map((product) => syncProductAvailabilityByEvent(product)));
+
+  return products;
+};
+
 const buildProductPayload = (body = {}, options = {}) => {
   const disponibilidad = normalizeDisponibilidad(
     body.disponibilidad,
@@ -160,6 +330,12 @@ const buildProductPayload = (body = {}, options = {}) => {
     body.tipoProducto,
     body.tipo,
     body.type
+  );
+
+  const syncDisponibilidad = getOptionalBoolean(
+    body.sincronizarDisponibilidadEvento,
+    body.syncDisponibilidadEvento,
+    body.sincronizarConEvento
   );
 
   const payload = {
@@ -222,6 +398,14 @@ const buildProductPayload = (body = {}, options = {}) => {
         ? Boolean(body.activo)
         : estado !== "Inactivo"
   };
+
+  if (syncDisponibilidad !== undefined) {
+    payload.sincronizarDisponibilidadEvento = syncDisponibilidad;
+  } else if (options.defaultSyncDisponibilidad !== undefined) {
+    payload.sincronizarDisponibilidadEvento = Boolean(
+      options.defaultSyncDisponibilidad
+    );
+  }
 
   if (shouldReplaceImages(body, options.includeImages === true)) {
     payload.imagenes = normalizeImages(body.imagenes || []);
@@ -375,7 +559,7 @@ const populateProduct = (query) => {
         select: "nombre slug tipo"
       }
     })
-    .populate("evento", "titulo nombre slug")
+    .populate("evento", "titulo nombre slug fechaInicio fechaFin estado")
     .populate("origen", "nombre slug code")
     .populate("personajes", "nombre slug tipo");
 };
@@ -440,6 +624,8 @@ const getProducts = async (req, res) => {
       Product.find(filter).sort({ createdAt: -1 })
     );
 
+    await syncProductsAvailabilityByEvent(products);
+
     res.json({
       message: "Lista de productos obtenida correctamente",
       total: products.length,
@@ -467,6 +653,8 @@ const getProductById = async (req, res) => {
       });
     }
 
+    await syncProductAvailabilityByEvent(product);
+
     res.json({
       message: "Producto obtenido correctamente",
       product
@@ -482,8 +670,11 @@ const getProductById = async (req, res) => {
 const createProduct = async (req, res) => {
   try {
     const payload = buildProductPayload(req.body, {
-      includeImages: true
+      includeImages: true,
+      defaultSyncDisponibilidad: true
     });
+
+    await applyAutomaticAvailabilityToPayload(payload);
 
     const slug = createSlug(payload.nombre);
 
@@ -534,6 +725,8 @@ const updateProduct = async (req, res) => {
         message: "Producto no encontrado"
       });
     }
+
+    await applyAutomaticAvailabilityToPayload(payload, product);
 
     const previousStock = product.stock;
     const previousDisponibilidad = product.disponibilidad;

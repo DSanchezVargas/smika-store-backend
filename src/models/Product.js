@@ -291,6 +291,11 @@ const productSchema = new mongoose.Schema(
       default: ""
     },
 
+    sincronizarDisponibilidadEvento: {
+      type: Boolean,
+      default: true
+    },
+
     adulto: {
       type: Boolean,
       default: false
