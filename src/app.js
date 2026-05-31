@@ -1,7 +1,7 @@
 const express = require("express");
 const cors = require("cors");
 const path = require("path");
-
+const availabilityRoutes = require("./routes/availabilityRoutes");
 const authRoutes = require("./routes/authRoutes");
 const originRoutes = require("./routes/originRoutes");
 const creatorRoutes = require("./routes/creatorRoutes");
@@ -20,6 +20,7 @@ const dashboardRoutes = require("./routes/dashboardRoutes");
 const preferenceRoutes = require("./routes/preferenceRoutes");
 const notificationRoutes = require("./routes/notificationRoutes");
 const recommendationRoutes = require("./routes/recommendationRoutes");
+const clientIssueRoutes = require("./routes/clientIssueRoutes");
 
 const { notFound, errorHandler } = require("./middlewares/errorMiddleware");
 
@@ -77,8 +78,10 @@ app.use("/api/uploads", uploadRoutes);
 app.use("/api/users", userRoutes);
 app.use("/api/dashboard", dashboardRoutes);
 app.use("/api/preferences", preferenceRoutes);
+app.use("/api/availabilities", availabilityRoutes);
 app.use("/api/notifications", notificationRoutes);
 app.use("/api/recommendations", recommendationRoutes);
+app.use("/api/client-issues", clientIssueRoutes);
 
 app.use(notFound);
 app.use(errorHandler);
