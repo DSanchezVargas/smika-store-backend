@@ -5,7 +5,8 @@ const {
   getEventTypeById,
   createEventType,
   updateEventType,
-  deleteEventType
+  deleteEventType,
+  syncEventTypes
 } = require("../controllers/eventTypeController");
 
 const { protect } = require("../middlewares/authMiddleware");
@@ -14,6 +15,14 @@ const { authorizeRoles } = require("../middlewares/roleMiddleware");
 const router = express.Router();
 
 router.get("/", getEventTypes);
+
+router.post(
+  "/sync",
+  protect,
+  authorizeRoles("admin", "subadmin"),
+  syncEventTypes
+);
+
 router.get("/:id", getEventTypeById);
 
 router.post(

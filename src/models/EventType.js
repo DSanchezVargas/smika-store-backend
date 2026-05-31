@@ -5,8 +5,7 @@ const eventTypeSchema = new mongoose.Schema(
     nombre: {
       type: String,
       required: [true, "El nombre del tipo de evento es obligatorio"],
-      trim: true,
-      unique: true
+      trim: true
     },
 
     slug: {
@@ -28,6 +27,11 @@ const eventTypeSchema = new mongoose.Schema(
       default: 0
     },
 
+    esDefault: {
+      type: Boolean,
+      default: false
+    },
+
     activo: {
       type: Boolean,
       default: true
@@ -37,13 +41,5 @@ const eventTypeSchema = new mongoose.Schema(
     timestamps: true
   }
 );
-
-eventTypeSchema.set("toJSON", {
-  virtuals: true
-});
-
-eventTypeSchema.set("toObject", {
-  virtuals: true
-});
 
 module.exports = mongoose.model("EventType", eventTypeSchema);
