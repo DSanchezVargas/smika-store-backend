@@ -99,7 +99,14 @@ const imageSchema = new mongoose.Schema(
 
     storage: {
       type: String,
-      enum: ["local-data-url", "uploads", "cloudinary", "external", ""],
+      enum: [
+        "local-data-url",
+        "uploads",
+        "cloudinary",
+        "external",
+        "existing",
+        ""
+      ],
       default: ""
     }
   },
@@ -270,6 +277,12 @@ const productSchema = new mongoose.Schema(
       type: Number,
       default: 0,
       min: [0, "El stock no puede ser negativo"]
+    },
+
+    stockTexto: {
+      type: String,
+      trim: true,
+      default: ""
     },
 
     tiempoEstimado: {
