@@ -104,7 +104,7 @@ const eventSchema = new mongoose.Schema(
 
     estado: {
       type: String,
-      enum: ["proximo", "activo", "finalizado", "cancelado"],
+      enum: ["proximo", "preventa", "activo", "finalizado", "cancelado"],
       default: "proximo"
     },
 

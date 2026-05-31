@@ -88,7 +88,7 @@ const createEventValidator = [
 
   body("estado")
     .optional()
-    .isIn(["proximo", "activo", "finalizado", "cancelado"])
+    .isIn(["proximo", "preventa", "activo", "finalizado", "cancelado"])
     .withMessage("El estado del evento no es válido"),
 
   optionalBoolean("destacado", "El campo destacado debe ser verdadero o falso"),
