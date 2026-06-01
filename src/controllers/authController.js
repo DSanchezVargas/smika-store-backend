@@ -13,6 +13,25 @@ const {
 
 const googleClient = new OAuth2Client(process.env.GOOGLE_CLIENT_ID);
 
+const PASSWORD_RULE_MESSAGE =
+  "La contraseña debe tener al menos 8 caracteres y solo puede usar letras, números y símbolos . , _ - *.";
+
+const getPasswordValidationError = (password = "") => {
+  if (!password || typeof password !== "string") {
+    return "La contraseña es obligatoria.";
+  }
+
+  if (password.length < 8) {
+    return "La contraseña debe tener al menos 8 caracteres.";
+  }
+
+  if (!/^[A-Za-z0-9.,_\-*]+$/.test(password)) {
+    return "La contraseña solo puede usar letras, números y símbolos . , _ - *.";
+  }
+
+  return "";
+};
+
 const createToken = (userId) => {
   return jwt.sign({ id: userId }, process.env.JWT_SECRET, {
     expiresIn: "7d"
@@ -33,7 +52,8 @@ const buildUserResponse = (user) => {
     email: user.email,
     role: user.role,
     authProvider: user.authProvider,
-    emailVerified: user.emailVerified
+    emailVerified: user.emailVerified,
+    hasPassword: Boolean(user.password)
   };
 };
 
@@ -57,9 +77,11 @@ const register = async (req, res) => {
       });
     }
 
-    if (password.length < 6) {
+    const passwordError = getPasswordValidationError(password);
+
+    if (passwordError) {
       return res.status(400).json({
-        message: "La contraseña debe tener al menos 6 caracteres."
+        message: passwordError
       });
     }
 
@@ -176,7 +198,7 @@ const profile = async (req, res) => {
       });
     }
 
-    const user = await User.findById(userId).select("-password");
+    const user = await User.findById(userId);
 
     if (!user || !user.activo) {
       return res.status(404).json({
@@ -254,9 +276,11 @@ const resetPassword = async (req, res) => {
       });
     }
 
-    if (newPassword.length < 6) {
+    const passwordError = getPasswordValidationError(newPassword);
+
+    if (passwordError) {
       return res.status(400).json({
-        message: "La nueva contraseña debe tener al menos 6 caracteres."
+        message: passwordError
       });
     }
 
@@ -316,6 +340,86 @@ const resetPassword = async (req, res) => {
     });
   }
 };
+
+
+const changePassword = async (req, res) => {
+  try {
+    const userId = req.user?._id || req.user?.id || req.userId;
+    const { currentPassword = "", newPassword = "" } = req.body;
+
+    if (!userId) {
+      return res.status(401).json({
+        message: "No autorizado."
+      });
+    }
+
+    const passwordError = getPasswordValidationError(newPassword);
+
+    if (passwordError) {
+      return res.status(400).json({
+        message: passwordError
+      });
+    }
+
+    const user = await User.findById(userId);
+
+    if (!user || !user.activo) {
+      return res.status(404).json({
+        message: "Usuario no encontrado."
+      });
+    }
+
+    const hasLocalPassword = Boolean(user.password);
+
+    if (hasLocalPassword) {
+      if (!currentPassword) {
+        return res.status(400).json({
+          message: "Falta escribir tu contraseña actual."
+        });
+      }
+
+      const isCurrentPasswordValid = await bcrypt.compare(
+        currentPassword,
+        user.password
+      );
+
+      if (!isCurrentPasswordValid) {
+        return res.status(400).json({
+          message: "La contraseña actual no es correcta."
+        });
+      }
+
+      const isSamePassword = await bcrypt.compare(newPassword, user.password);
+
+      if (isSamePassword) {
+        return res.status(400).json({
+          message: "La nueva contraseña debe ser diferente a la actual."
+        });
+      }
+    }
+
+    user.password = await bcrypt.hash(newPassword, 10);
+
+    if (!user.authProvider) {
+      user.authProvider = "local";
+    }
+
+    await user.save();
+
+    return res.json({
+      message: hasLocalPassword
+        ? "Contraseña actualizada correctamente."
+        : "Contraseña creada correctamente. Ahora también puedes iniciar sesión con correo y contraseña.",
+      user: buildUserResponse(user)
+    });
+  } catch (error) {
+    return res.status(500).json({
+      message: "Error al actualizar contraseña.",
+      error: error.message
+    });
+  }
+};
+
 
 const googleLogin = async (req, res) => {
   try {
@@ -390,6 +494,7 @@ module.exports = {
   register,
   login,
   profile,
+  changePassword,
   forgotPassword,
   resetPassword,
   googleLogin

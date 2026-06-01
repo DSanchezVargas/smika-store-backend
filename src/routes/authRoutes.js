@@ -4,6 +4,7 @@ const {
   register,
   login,
   profile,
+  changePassword,
   forgotPassword,
   resetPassword,
   googleLogin
@@ -37,6 +38,12 @@ router.get(
   "/profile",
   protect,
   profile
+);
+
+router.patch(
+  "/change-password",
+  protect,
+  changePassword
 );
 
 router.post(
