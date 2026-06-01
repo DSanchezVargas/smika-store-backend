@@ -5,8 +5,7 @@ const {
   getSeriesById,
   createSeries,
   updateSeries,
-  deleteSeries,
-  deleteRemovedSeries
+  deleteSeries
 } = require("../controllers/seriesController");
 
 const {
@@ -21,15 +20,6 @@ const { authorizeRoles } = require("../middlewares/roleMiddleware");
 const router = express.Router();
 
 router.get("/", getSeries);
-
-
-router.delete(
-  "/cleanup/unwanted",
-  protect,
-  authorizeRoles("admin", "subadmin"),
-  deleteRemovedSeries
-);
-
 router.get("/:id", getSeriesById);
 
 router.post(

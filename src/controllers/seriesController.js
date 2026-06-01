@@ -3,40 +3,6 @@ const mongoose = require("mongoose");
 const Series = require("../models/Series");
 const { createSlug } = require("../utils/slugHelper");
 
-const REMOVED_SERIES_NAMES = [
-  "solo leveling",
-  "erha",
-  "jujutsu kaisen",
-  "fan merch colección especial",
-  "bungou stray dogs",
-  "given",
-  "haikyuu"
-];
-
-const normalizeSeriesName = (value = "") => {
-  return value
-    .toString()
-    .normalize("NFD")
-    .replace(/[\u0300-\u036f]/g, "")
-    .toLowerCase()
-    .replace(/[^a-z0-9]+/g, " ")
-    .trim();
-};
-
-const removedSeriesNameSet = new Set(
-  REMOVED_SERIES_NAMES.map(normalizeSeriesName)
-);
-
-const isRemovedSeriesName = (value = "") => {
-  return removedSeriesNameSet.has(normalizeSeriesName(value));
-};
-
-const findRemovedSeries = async () => {
-  const allSeries = await Series.find({}, "_id nombre slug");
-
-  return allSeries.filter((serie) => isRemovedSeriesName(serie.nombre));
-};
-
 const isValidObjectId = (value) => {
   return value && mongoose.Types.ObjectId.isValid(value);
 };
@@ -333,14 +299,10 @@ const getSeries = async (req, res) => {
       nombre: 1
     });
 
-    const visibleSeries = series.filter(
-      (serie) => !isRemovedSeriesName(serie.nombre)
-    );
-
     res.json({
       message: "Lista de series obtenida correctamente",
-      total: visibleSeries.length,
-      series: visibleSeries.map(normalizeSerieResponse)
+      total: series.length,
+      series: series.map(normalizeSerieResponse)
     });
   } catch (error) {
     console.error("Error al obtener series:", error);
@@ -360,7 +322,7 @@ const getSeriesById = async (req, res) => {
 
     const serie = await Series.findOne(query);
 
-    if (!serie || isRemovedSeriesName(serie.nombre)) {
+    if (!serie) {
       return res.status(404).json({
         message: "Serie no encontrada"
       });
@@ -389,12 +351,6 @@ const createSeries = async (req, res) => {
     if (!payload.nombre) {
       return res.status(400).json({
         message: "El nombre de la serie es obligatorio"
-      });
-    }
-
-    if (isRemovedSeriesName(payload.nombre)) {
-      return res.status(400).json({
-        message: "Esta serie fue retirada y no puede volver a registrarse."
       });
     }
 
@@ -442,12 +398,6 @@ const updateSeries = async (req, res) => {
     }
 
     if (payload.nombre) {
-      if (isRemovedSeriesName(payload.nombre)) {
-        return res.status(400).json({
-          message: "Esta serie fue retirada y no puede volver a registrarse."
-        });
-      }
-
       const slug = createSlug(payload.nombre);
 
       const duplicatedSeries = await Series.findOne({
@@ -511,45 +461,10 @@ const deleteSeries = async (req, res) => {
   }
 };
 
-const deleteRemovedSeries = async (req, res) => {
-  try {
-    const removedSeries = await findRemovedSeries();
-
-    if (removedSeries.length === 0) {
-      return res.json({
-        message: "No se encontraron series no deseadas para borrar.",
-        deletedCount: 0,
-        names: []
-      });
-    }
-
-    const ids = removedSeries.map((serie) => serie._id);
-    const names = removedSeries.map((serie) => serie.nombre);
-
-    const result = await Series.deleteMany({
-      _id: { $in: ids }
-    });
-
-    res.json({
-      message: "Series no deseadas borradas definitivamente.",
-      deletedCount: result.deletedCount || 0,
-      names
-    });
-  } catch (error) {
-    console.error("Error al borrar series no deseadas:", error);
-
-    res.status(500).json({
-      message: "Error al borrar series no deseadas",
-      error: error.message
-    });
-  }
-};
-
 module.exports = {
   getSeries,
   getSeriesById,
   createSeries,
   updateSeries,
-  deleteSeries,
-  deleteRemovedSeries
+  deleteSeries
 };
