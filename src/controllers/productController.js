@@ -233,9 +233,8 @@ const applyAutomaticAvailabilityToPayload = async (
 };
 
 const syncProductAvailabilityByEvent = async (product, options = {}) => {
+  const persistChanges = options.persist !== false;
   if (!product) return product;
-
-  const { persist = false } = options;
 
   if (product.sincronizarDisponibilidadEvento === false) {
     return product;
@@ -274,11 +273,8 @@ const syncProductAvailabilityByEvent = async (product, options = {}) => {
   product.disponibilidad = automaticAvailability.disponibilidad;
   product.estado = automaticAvailability.estado;
 
-  // Importante: no se debe guardar desde GET /products.
-  // Había productos antiguos con datos incompletos; al hacer save() durante la recarga,
-  // Mongoose validaba todo el documento y podía responder 500 aunque solo se estuviera listando.
-  if (persist && typeof product.save === "function") {
-    await product.save({ validateBeforeSave: false });
+  if (persistChanges && typeof product.save === "function") {
+    await product.save();
   }
 
   return product;
@@ -286,17 +282,7 @@ const syncProductAvailabilityByEvent = async (product, options = {}) => {
 
 const syncProductsAvailabilityByEvent = async (products = [], options = {}) => {
   await Promise.all(
-    products.map(async (product) => {
-      try {
-        await syncProductAvailabilityByEvent(product, options);
-      } catch (error) {
-        console.log(
-          "No se pudo sincronizar disponibilidad de producto:",
-          product?._id?.toString?.() || product?.id || "sin-id",
-          error.message
-        );
-      }
-    })
+    products.map((product) => syncProductAvailabilityByEvent(product, options))
   );
 
   return products;
@@ -583,6 +569,14 @@ const populateProduct = (query) => {
     .populate("personajes", "nombre slug tipo");
 };
 
+const applySafeProductListQueryOptions = (query) => {
+  if (typeof query.allowDiskUse === "function") {
+    return query.allowDiskUse(true);
+  }
+
+  return query;
+};
+
 const getProducts = async (req, res) => {
   try {
     const {
@@ -639,11 +633,15 @@ const getProducts = async (req, res) => {
     if (esNuevo !== undefined) filter.esNuevo = esNuevo === "true";
     if (esDestacado !== undefined) filter.esDestacado = esDestacado === "true";
 
-    const products = await populateProduct(
-      Product.find(filter).sort({ createdAt: -1 })
+    const productsQuery = applySafeProductListQueryOptions(
+      populateProduct(Product.find(filter).sort({ _id: -1 }))
     );
 
-    await syncProductsAvailabilityByEvent(products, { persist: false });
+    const products = await productsQuery;
+
+    await syncProductsAvailabilityByEvent(products, {
+      persist: false
+    });
 
     res.json({
       message: "Lista de productos obtenida correctamente",
@@ -651,8 +649,6 @@ const getProducts = async (req, res) => {
       products
     });
   } catch (error) {
-    console.error("Error al obtener productos:", error);
-
     res.status(500).json({
       message: "Error al obtener productos",
       error: error.message
@@ -674,7 +670,9 @@ const getProductById = async (req, res) => {
       });
     }
 
-    await syncProductAvailabilityByEvent(product, { persist: false });
+    await syncProductAvailabilityByEvent(product, {
+      persist: false
+    });
 
     res.json({
       message: "Producto obtenido correctamente",

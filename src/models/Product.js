@@ -115,48 +115,6 @@ const imageSchema = new mongoose.Schema(
   }
 );
 
-
-const productVariantSchema = new mongoose.Schema(
-  {
-    codigo: {
-      type: String,
-      trim: true,
-      default: ""
-    },
-
-    nombre: {
-      type: String,
-      trim: true,
-      required: [true, "El nombre de la opción es obligatorio"]
-    },
-
-    precio: {
-      type: Number,
-      default: 0,
-      min: [0, "El precio de la opción no puede ser negativo"]
-    },
-
-    stock: {
-      type: Number,
-      default: 0,
-      min: [0, "El stock de la opción no puede ser negativo"]
-    },
-
-    activa: {
-      type: Boolean,
-      default: true
-    },
-
-    orden: {
-      type: Number,
-      default: 0
-    }
-  },
-  {
-    _id: false
-  }
-);
-
 const productSchema = new mongoose.Schema(
   {
     nombre: {
@@ -194,17 +152,6 @@ const productSchema = new mongoose.Schema(
     precioAnterior: {
       type: Number,
       default: null
-    },
-
-    varianteTipo: {
-      type: String,
-      enum: ["sin_variantes", "precio_igual", "precio_diferente"],
-      default: "sin_variantes"
-    },
-
-    variantes: {
-      type: [productVariantSchema],
-      default: []
     },
 
     imagenes: {
@@ -373,6 +320,12 @@ const productSchema = new mongoose.Schema(
     timestamps: true
   }
 );
+
+
+productSchema.index({ activo: 1, _id: -1 });
+productSchema.index({ serie: 1, activo: 1, _id: -1 });
+productSchema.index({ evento: 1, activo: 1, _id: -1 });
+productSchema.index({ categoria: 1, activo: 1, _id: -1 });
 
 productSchema.virtual("serieTexto").get(function () {
   return this.serieNombre;
