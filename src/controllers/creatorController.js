@@ -1,9 +1,88 @@
 const Creator = require("../models/Creator");
+const Series = require("../models/Series");
 const { createSlug } = require("../utils/slugHelper");
+
+const getTextValue = (value = "") => {
+  if (value === undefined || value === null) return "";
+
+  if (typeof value === "object") {
+    return value.nombre || value.name || value.titulo || "";
+  }
+
+  return value.toString().trim();
+};
+
+const normalizeStringArray = (value) => {
+  if (Array.isArray(value)) {
+    return value.flatMap(normalizeStringArray).filter(Boolean);
+  }
+
+  const text = getTextValue(value);
+
+  if (!text) return [];
+
+  return text
+    .split(",")
+    .map((item) => item.trim())
+    .filter(Boolean);
+};
+
+const uniqueTextList = (values = []) => {
+  const map = new Map();
+
+  values
+    .map(getTextValue)
+    .filter(Boolean)
+    .forEach((value) => {
+      const key = createSlug(value) || value.toLowerCase();
+
+      if (!map.has(key)) {
+        map.set(key, value);
+      }
+    });
+
+  return [...map.values()];
+};
+
+const syncMissingCreatorsFromSeries = async () => {
+  const series = await Series.find({
+    activa: { $ne: false },
+    activo: { $ne: false }
+  }).select("creadoresNombre autor origenNombre pais");
+
+  const authorNames = uniqueTextList(
+    series.flatMap((serie) => [
+      ...normalizeStringArray(serie.creadoresNombre),
+      ...normalizeStringArray(serie.autor)
+    ])
+  );
+
+  for (const authorName of authorNames) {
+    const slug = createSlug(authorName);
+
+    if (!slug) continue;
+
+    const creatorExists = await Creator.exists({ slug });
+
+    if (creatorExists) continue;
+
+    await Creator.create({
+      nombre: authorName,
+      slug,
+      tipo: "Autor",
+      descripcion: "Autor/creador sincronizado desde una serie o historia.",
+      activo: true
+    }).catch(async (error) => {
+      if (error?.code !== 11000) throw error;
+    });
+  }
+};
 
 const getCreators = async (req, res) => {
   try {
     const { search, activos } = req.query;
+
+    await syncMissingCreatorsFromSeries();
 
     const filter = {};
 

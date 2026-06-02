@@ -1,10 +1,81 @@
 const mongoose = require("mongoose");
 
 const Series = require("../models/Series");
+const Creator = require("../models/Creator");
+const Event = require("../models/Event");
+const Product = require("../models/Product");
 const { createSlug } = require("../utils/slugHelper");
 
 const isValidObjectId = (value) => {
   return value && mongoose.Types.ObjectId.isValid(value);
+};
+
+const OBJECT_ID_TEXT_PATTERN = /^[a-f0-9]{24}$/i;
+
+const isSuspiciousObjectIdName = (value = "") => {
+  const cleanValue = value.toString().trim();
+
+  return OBJECT_ID_TEXT_PATTERN.test(cleanValue) && mongoose.Types.ObjectId.isValid(cleanValue);
+};
+
+const cleanupSeriesReferences = async (series = null) => {
+  if (!series) return;
+
+  const seriesId = series._id?.toString?.() || series.id?.toString?.() || "";
+  const seriesName = getTextValue(series.nombre);
+
+  if (!seriesId) return;
+
+  const namesToRemove = [seriesId, seriesName].filter(Boolean);
+
+  await Event.updateMany(
+    {
+      $or: [
+        { serie: series._id },
+        { series: series._id },
+        { serieNombre: { $in: namesToRemove } },
+        { seriesNombre: { $in: namesToRemove } }
+      ]
+    },
+    {
+      $pull: {
+        series: series._id,
+        seriesNombre: { $in: namesToRemove }
+      },
+      $set: {
+        serie: null,
+        serieNombre: ""
+      }
+    }
+  );
+
+  await Product.updateMany(
+    {
+      $or: [
+        { serie: series._id },
+        { serieNombre: { $in: namesToRemove } }
+      ]
+    },
+    {
+      $set: {
+        serie: null,
+        serieNombre: ""
+      }
+    }
+  );
+};
+
+const cleanupSuspiciousSeriesRecords = async () => {
+  const suspiciousSeries = await Series.find({
+    nombre: { $regex: OBJECT_ID_TEXT_PATTERN }
+  });
+
+  for (const serie of suspiciousSeries) {
+    if (!isSuspiciousObjectIdName(serie.nombre)) continue;
+
+    await cleanupSeriesReferences(serie);
+    await Series.findByIdAndDelete(serie._id);
+  }
 };
 
 const getOptionalObjectId = (value) => {
@@ -75,6 +146,104 @@ const normalizeStringArray = (value) => {
     .filter(Boolean);
 };
 
+
+const uniqueTextList = (values = []) => {
+  const map = new Map();
+
+  values
+    .map((value) => getTextValue(value))
+    .filter(Boolean)
+    .forEach((value) => {
+      const key = createSlug(value) || value.toLowerCase();
+
+      if (!map.has(key)) {
+        map.set(key, value);
+      }
+    });
+
+  return [...map.values()];
+};
+
+const upsertCreatorByName = async (creatorName = "", seriePayload = {}) => {
+  const cleanName = getTextValue(creatorName);
+
+  if (!cleanName) return null;
+
+  const slug = createSlug(cleanName);
+
+  if (!slug) return null;
+
+  let creator = await Creator.findOne({ slug });
+
+  if (creator) {
+    if (creator.activo === false) {
+      creator.activo = true;
+      await creator.save();
+    }
+
+    return creator;
+  }
+
+  try {
+    return await Creator.create({
+      nombre: cleanName,
+      slug,
+      tipo: "Autor",
+      descripcion: "Autor/creador agregado automáticamente desde una serie o historia.",
+      paisOrigen: getTextValue(seriePayload.origenNombre, seriePayload.pais),
+      activo: true
+    });
+  } catch (error) {
+    if (error?.code === 11000) {
+      return await Creator.findOne({ slug });
+    }
+
+    throw error;
+  }
+};
+
+const resolveSeriesCreators = async (payload = {}) => {
+  const creatorIds = Array.isArray(payload.creadores)
+    ? payload.creadores.filter(isValidObjectId)
+    : [];
+
+  const creatorNames = uniqueTextList(payload.creadoresNombre || []);
+  const creatorsBySlug = new Map();
+
+  if (creatorIds.length > 0) {
+    const existingCreators = await Creator.find({
+      _id: { $in: creatorIds }
+    });
+
+    existingCreators.forEach((creator) => {
+      const key = creator.slug || createSlug(creator.nombre);
+
+      if (key && !creatorsBySlug.has(key)) {
+        creatorsBySlug.set(key, creator);
+      }
+    });
+  }
+
+  for (const creatorName of creatorNames) {
+    const creator = await upsertCreatorByName(creatorName, payload);
+
+    if (!creator) continue;
+
+    const key = creator.slug || createSlug(creator.nombre);
+
+    if (key && !creatorsBySlug.has(key)) {
+      creatorsBySlug.set(key, creator);
+    }
+  }
+
+  const linkedCreators = [...creatorsBySlug.values()];
+
+  payload.creadores = linkedCreators.map((creator) => creator._id);
+  payload.creadoresNombre = linkedCreators.map((creator) => creator.nombre);
+
+  return linkedCreators;
+};
+
 const shouldReplaceImages = (body = {}, includeImages = false) => {
   if (includeImages) return true;
 
@@ -109,14 +278,17 @@ const normalizeSerieResponse = (serie) => {
     plainSerie.country ||
     "Variado";
 
-  const creadoresNombre = Array.isArray(plainSerie.creadoresNombre)
-    ? plainSerie.creadoresNombre.filter(Boolean)
-    : plainSerie.autor
-    ? plainSerie.autor
-        .split(",")
-        .map((creator) => creator.trim())
-        .filter(Boolean)
+  const creadoresDesdeReferencias = Array.isArray(plainSerie.creadores)
+    ? plainSerie.creadores.map((creator) => getTextValue(creator)).filter(Boolean)
     : [];
+
+  const creadoresNombre = uniqueTextList([
+    ...creadoresDesdeReferencias,
+    ...(Array.isArray(plainSerie.creadoresNombre)
+      ? plainSerie.creadoresNombre
+      : []),
+    ...normalizeStringArray(plainSerie.autor)
+  ]);
 
   return {
     ...plainSerie,
@@ -247,10 +419,15 @@ const buildSeriesPayload = (body = {}, options = {}) => {
 
 const getSeries = async (req, res) => {
   try {
+    await cleanupSuspiciousSeriesRecords();
+
     const { search, categoriaPrincipal, subcategoria, origen, activos } =
       req.query;
 
     const filter = {};
+    const andConditions = [
+      { nombre: { $not: OBJECT_ID_TEXT_PATTERN } }
+    ];
 
     if (activos !== "false") {
       filter.activa = true;
@@ -258,7 +435,7 @@ const getSeries = async (req, res) => {
     }
 
     if (search) {
-      filter.nombre = { $regex: search, $options: "i" };
+      andConditions.push({ nombre: { $regex: search, $options: "i" } });
     }
 
     if (categoriaPrincipal) {
@@ -294,10 +471,16 @@ const getSeries = async (req, res) => {
       }
     }
 
-    const series = await Series.find(filter).sort({
-      orden: 1,
-      nombre: 1
-    });
+    if (andConditions.length > 0) {
+      filter.$and = andConditions;
+    }
+
+    const series = await Series.find(filter)
+      .populate("creadores", "nombre slug tipo paisOrigen activo")
+      .sort({
+        orden: 1,
+        nombre: 1
+      });
 
     res.json({
       message: "Lista de series obtenida correctamente",
@@ -320,7 +503,10 @@ const getSeriesById = async (req, res) => {
       ? { _id: req.params.id }
       : { slug: req.params.id };
 
-    const serie = await Series.findOne(query);
+    const serie = await Series.findOne(query).populate(
+      "creadores",
+      "nombre slug tipo paisOrigen activo"
+    );
 
     if (!serie) {
       return res.status(404).json({
@@ -353,6 +539,14 @@ const createSeries = async (req, res) => {
         message: "El nombre de la serie es obligatorio"
       });
     }
+
+    if (isSuspiciousObjectIdName(payload.nombre)) {
+      return res.status(400).json({
+        message: "El nombre de la serie no puede ser un ID interno"
+      });
+    }
+
+    await resolveSeriesCreators(payload);
 
     const slug = createSlug(payload.nombre);
 
@@ -397,6 +591,14 @@ const updateSeries = async (req, res) => {
       });
     }
 
+    if (payload.nombre && isSuspiciousObjectIdName(payload.nombre)) {
+      return res.status(400).json({
+        message: "El nombre de la serie no puede ser un ID interno"
+      });
+    }
+
+    await resolveSeriesCreators(payload);
+
     if (payload.nombre) {
       const slug = createSlug(payload.nombre);
 
@@ -439,7 +641,10 @@ const updateSeries = async (req, res) => {
 
 const deleteSeries = async (req, res) => {
   try {
-    const serie = await Series.findByIdAndDelete(req.params.id);
+    const serie = await Series.findById(req.params.id).populate(
+      "creadores",
+      "nombre slug tipo paisOrigen activo"
+    );
 
     if (!serie) {
       return res.status(404).json({
@@ -447,8 +652,11 @@ const deleteSeries = async (req, res) => {
       });
     }
 
+    await cleanupSeriesReferences(serie);
+    await Series.findByIdAndDelete(serie._id);
+
     res.json({
-      message: "Serie borrada definitivamente",
+      message: "Serie borrada definitivamente y referencias limpiadas",
       serie: normalizeSerieResponse(serie)
     });
   } catch (error) {

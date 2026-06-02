@@ -11,6 +11,14 @@ const isValidObjectId = (value) => {
   return value && mongoose.Types.ObjectId.isValid(value);
 };
 
+const isReadableSeriesName = (value = "") => {
+  const cleanValue = getTextValue(value);
+
+  if (!cleanValue) return false;
+
+  return !isValidObjectId(cleanValue);
+};
+
 const getOptionalObjectId = (value) => {
   return isValidObjectId(value) ? value : null;
 };
@@ -134,12 +142,12 @@ const getSeriesNames = (plainEvent) => {
   if (Array.isArray(plainEvent.series)) {
     plainEvent.series.forEach((serie) => {
       const name = getTextValue(serie?.nombre, serie?.name);
-      if (name) names.push(name);
+      if (isReadableSeriesName(name)) names.push(name);
     });
   }
 
   if (Array.isArray(plainEvent.seriesNombre)) {
-    names.push(...plainEvent.seriesNombre.filter(Boolean));
+    names.push(...plainEvent.seriesNombre.filter(isReadableSeriesName));
   }
 
   const legacySerieName = getTextValue(
@@ -147,7 +155,7 @@ const getSeriesNames = (plainEvent) => {
     plainEvent.serieNombre
   );
 
-  if (legacySerieName) names.push(legacySerieName);
+  if (isReadableSeriesName(legacySerieName)) names.push(legacySerieName);
 
   return [...new Set(names)];
 };
@@ -218,7 +226,7 @@ const resolveSeriesData = async (body = {}) => {
         value.serieNombre
       );
 
-      if (possibleName) {
+      if (isReadableSeriesName(possibleName)) {
         rawSeriesNames.push(possibleName);
       }
 
@@ -231,7 +239,7 @@ const resolveSeriesData = async (body = {}) => {
 
     if (isValidObjectId(text)) {
       rawSeriesIds.push(text);
-    } else {
+    } else if (isReadableSeriesName(text)) {
       rawSeriesNames.push(text);
     }
   };
@@ -240,34 +248,37 @@ const resolveSeriesData = async (body = {}) => {
   collectSeriesValue(body.serie);
 
   rawSeriesNames.push(
-    ...normalizeStringArray(body.seriesNombre),
-    ...normalizeStringArray(body.seriesTexto),
-    ...normalizeStringArray(body.seriesNames),
-    ...normalizeStringArray(body.serieNombre)
+    ...normalizeStringArray(body.seriesNombre).filter(isReadableSeriesName),
+    ...normalizeStringArray(body.seriesTexto).filter(isReadableSeriesName),
+    ...normalizeStringArray(body.seriesNames).filter(isReadableSeriesName),
+    ...normalizeStringArray(body.serieNombre).filter(isReadableSeriesName)
   );
 
-  const validSeriesIds = [...new Set(rawSeriesIds.filter(isValidObjectId))];
+  const requestedSeriesIds = [...new Set(rawSeriesIds.filter(isValidObjectId))];
 
-  const fetchedSeries = validSeriesIds.length
-    ? await Series.find({ _id: { $in: validSeriesIds } }).select("nombre")
+  const fetchedSeries = requestedSeriesIds.length
+    ? await Series.find({
+        _id: { $in: requestedSeriesIds },
+        activa: { $ne: false },
+        activo: { $ne: false },
+        nombre: { $not: /^[a-f0-9]{24}$/i }
+      }).select("nombre")
     : [];
 
-  const fetchedNamesById = new Map(
-    fetchedSeries.map((serie) => [serie._id.toString(), serie.nombre])
-  );
+  const existingSeriesIds = fetchedSeries.map((serie) => serie._id.toString());
 
-  const fetchedNames = validSeriesIds
-    .map((seriesId) => fetchedNamesById.get(seriesId.toString()))
-    .filter(Boolean);
+  const fetchedNames = fetchedSeries
+    .map((serie) => serie.nombre)
+    .filter(isReadableSeriesName);
 
   const seriesNombre = [
-    ...new Set([...fetchedNames, ...rawSeriesNames].filter(Boolean))
+    ...new Set([...fetchedNames, ...rawSeriesNames].filter(isReadableSeriesName))
   ];
 
   return {
-    series: validSeriesIds,
+    series: existingSeriesIds,
     seriesNombre,
-    serie: validSeriesIds[0] || null,
+    serie: existingSeriesIds[0] || null,
     serieNombre: seriesNombre[0] || ""
   };
 };
