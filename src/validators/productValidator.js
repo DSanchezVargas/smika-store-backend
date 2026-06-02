@@ -8,8 +8,18 @@ const isMongoIdOrEmpty = (value) => {
 
 const hasValidPrice = (value, { req }) => {
   const price = req.body.precioReferencial ?? req.body.precio ?? req.body.price;
+  const variantMode = req.body.varianteTipo || req.body.tipoVariante || req.body.variantMode;
+  const variants = Array.isArray(req.body.variantes) ? req.body.variantes : [];
+  const hasVariantPrice = variants.some((variant) => {
+    const variantPrice = variant?.precio ?? variant?.price ?? variant?.precioReferencial;
+    return variantPrice !== undefined && variantPrice !== null && variantPrice !== "" && Number(variantPrice) >= 0;
+  });
 
   if (price === undefined || price === null || price === "") {
+    if (variantMode === "precio_diferente" && hasVariantPrice) {
+      return true;
+    }
+
     throw new Error("El precio referencial es obligatorio");
   }
 
@@ -142,6 +152,31 @@ const createProductValidator = [
     .optional()
     .isBoolean()
     .withMessage("El campo esDestacado debe ser verdadero o falso"),
+
+  body("varianteTipo")
+    .optional({ nullable: true, checkFalsy: true })
+    .isIn(["sin_variantes", "precio_igual", "precio_diferente"])
+    .withMessage("El tipo de variante no es válido"),
+
+  body("variantes")
+    .optional()
+    .isArray()
+    .withMessage("Las variantes deben enviarse como un arreglo"),
+
+  body("variantes.*.nombre")
+    .optional({ nullable: true, checkFalsy: true })
+    .isString()
+    .withMessage("El nombre de la variante debe ser texto"),
+
+  body("variantes.*.precio")
+    .optional({ nullable: true, checkFalsy: true })
+    .isFloat({ min: 0 })
+    .withMessage("El precio de la variante no puede ser negativo"),
+
+  body("variantes.*.stock")
+    .optional({ nullable: true, checkFalsy: true })
+    .isInt({ min: 0 })
+    .withMessage("El stock de la variante no puede ser negativo"),
 
   body("activo")
     .optional()

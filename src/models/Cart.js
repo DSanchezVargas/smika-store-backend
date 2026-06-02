@@ -18,6 +18,24 @@ const cartItemSchema = new mongoose.Schema(
       type: Number,
       required: [true, "El precio referencial unitario es obligatorio"],
       min: [0, "El precio no puede ser negativo"]
+    },
+
+    varianteCodigo: {
+      type: String,
+      trim: true,
+      default: ""
+    },
+
+    varianteNombre: {
+      type: String,
+      trim: true,
+      default: ""
+    },
+
+    variantePrecioReferencial: {
+      type: Number,
+      default: 0,
+      min: [0, "El precio de la opción no puede ser negativo"]
     }
   },
   {

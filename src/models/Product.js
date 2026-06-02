@@ -115,6 +115,48 @@ const imageSchema = new mongoose.Schema(
   }
 );
 
+
+const productVariantSchema = new mongoose.Schema(
+  {
+    codigo: {
+      type: String,
+      trim: true,
+      default: ""
+    },
+
+    nombre: {
+      type: String,
+      trim: true,
+      required: [true, "El nombre de la opción es obligatorio"]
+    },
+
+    precio: {
+      type: Number,
+      default: 0,
+      min: [0, "El precio de la opción no puede ser negativo"]
+    },
+
+    stock: {
+      type: Number,
+      default: 0,
+      min: [0, "El stock de la opción no puede ser negativo"]
+    },
+
+    activa: {
+      type: Boolean,
+      default: true
+    },
+
+    orden: {
+      type: Number,
+      default: 0
+    }
+  },
+  {
+    _id: false
+  }
+);
+
 const productSchema = new mongoose.Schema(
   {
     nombre: {
@@ -152,6 +194,17 @@ const productSchema = new mongoose.Schema(
     precioAnterior: {
       type: Number,
       default: null
+    },
+
+    varianteTipo: {
+      type: String,
+      enum: ["sin_variantes", "precio_igual", "precio_diferente"],
+      default: "sin_variantes"
+    },
+
+    variantes: {
+      type: [productVariantSchema],
+      default: []
     },
 
     imagenes: {
