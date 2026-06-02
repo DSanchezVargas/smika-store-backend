@@ -9,6 +9,46 @@ const { emitSocketEvent } = require("../utils/socketHelper");
 const LOW_STOCK_LIMIT = 5;
 const PERU_TIME_ZONE = "America/Lima";
 
+const PRODUCT_LIST_SELECT = [
+  "nombre",
+  "slug",
+  "descripcion",
+  "precioReferencial",
+  "precio",
+  "precioAnterior",
+  "varianteTipo",
+  "variantes",
+  "categoria",
+  "categoriaNombre",
+  "subcategoria",
+  "subcategoriaNombre",
+  "serie",
+  "serieNombre",
+  "evento",
+  "eventoNombre",
+  "origen",
+  "origenNombre",
+  "personajes",
+  "personajesNombre",
+  "personajeNombre",
+  "marca",
+  "tipoProducto",
+  "material",
+  "tamano",
+  "disponibilidad",
+  "estado",
+  "stock",
+  "stockTexto",
+  "tiempoEstimado",
+  "sincronizarDisponibilidadEvento",
+  "adulto",
+  "esNuevo",
+  "esDestacado",
+  "activo",
+  "createdAt",
+  "updatedAt"
+].join(" ");
+
 const isValidObjectId = (value) => {
   return value && mongoose.Types.ObjectId.isValid(value);
 };
@@ -33,6 +73,18 @@ const getTextValue = (...values) => {
   const found = values.find(
     (value) => value !== undefined && value !== null && value !== ""
   );
+
+  if (Array.isArray(found)) {
+    return found
+      .map((item) => getTextValue(item))
+      .filter(Boolean)
+      .join(", ")
+      .trim();
+  }
+
+  if (found && typeof found === "object") {
+    return found.nombre || found.titulo || found.name || "";
+  }
 
   return found ? found.toString().trim() : "";
 };
@@ -118,6 +170,88 @@ const normalizeDisponibilidad = (disponibilidad = "", estado = "") => {
   return "stock";
 };
 
+const normalizeVarianteTipo = (value = "") => {
+  const cleanValue = value.toString().trim().toLowerCase();
+
+  if (["precio_igual", "igual", "same_price", "mismo_precio"].includes(cleanValue)) {
+    return "precio_igual";
+  }
+
+  if (["precio_diferente", "diferente", "different_price", "precio_variable"].includes(cleanValue)) {
+    return "precio_diferente";
+  }
+
+  return "sin_variantes";
+};
+
+const createVariantCode = (text = "", index = 0) => {
+  const slug = text
+    .toString()
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .toLowerCase()
+    .trim()
+    .replace(/[^a-z0-9]+/g, "-")
+    .replace(/(^-|-$)+/g, "");
+
+  return slug || `opcion-${index + 1}`;
+};
+
+const normalizeProductVariants = (
+  variants = [],
+  variantMode = "sin_variantes",
+  basePrice = 0
+) => {
+  if (variantMode === "sin_variantes" || !Array.isArray(variants)) return [];
+
+  const seenCodes = new Set();
+
+  return variants
+    .map((variant, index) => {
+      const nombre = getTextValue(
+        variant?.nombre,
+        variant?.name,
+        variant?.label,
+        variant?.titulo
+      );
+
+      if (!nombre) return null;
+
+      const rawCode = getTextValue(variant?.codigo, variant?.code, variant?.id);
+      let codigo = rawCode || createVariantCode(nombre, index);
+
+      while (seenCodes.has(codigo)) {
+        codigo = `${codigo}-${index + 1}`;
+      }
+
+      seenCodes.add(codigo);
+
+      const variantPrice =
+        variantMode === "precio_diferente"
+          ? getNumberValue(variant?.precio, variant?.price, variant?.precioReferencial)
+          : Number(basePrice || 0);
+
+      return {
+        codigo,
+        nombre,
+        precio: Number(variantPrice || 0),
+        stock: Number(variant?.stock || 0),
+        activa: variant?.activa !== undefined ? Boolean(variant.activa) : true,
+        orden: Number(variant?.orden ?? index)
+      };
+    })
+    .filter(Boolean)
+    .sort((a, b) => Number(a.orden || 0) - Number(b.orden || 0));
+};
+
+const getMinimumVariantPrice = (variants = []) => {
+  const prices = variants
+    .map((variant) => Number(variant?.precio || 0))
+    .filter((price) => price >= 0);
+
+  return prices.length > 0 ? Math.min(...prices) : 0;
+};
+
 const getAutomaticAvailabilityFromEvent = (event) => {
   if (!event || !event.fechaInicio) return null;
 
@@ -139,6 +273,25 @@ const getAutomaticAvailabilityFromEvent = (event) => {
   };
 };
 
+const getImageSource = (image) => {
+  if (!image) return "";
+
+  if (typeof image === "string") return image.trim();
+
+  if (image && typeof image === "object") {
+    return (
+      image.url ||
+      image.finalPreview ||
+      image.preview ||
+      image.src ||
+      image.imagen ||
+      ""
+    ).trim();
+  }
+
+  return "";
+};
+
 const normalizeImages = (imagenes = []) => {
   if (!Array.isArray(imagenes)) return [];
 
@@ -153,8 +306,7 @@ const normalizeImages = (imagenes = []) => {
         };
       }
 
-      const imageUrl =
-        image.url || image.finalPreview || image.preview || image.imagen || "";
+      const imageUrl = getImageSource(image);
 
       return {
         url: imageUrl,
@@ -296,11 +448,26 @@ const buildProductPayload = (body = {}, options = {}) => {
 
   const estado = normalizeEstado(body.estado, disponibilidad);
 
-  const price = getNumberValue(
+  const requestedVariantMode = normalizeVarianteTipo(
+    body.varianteTipo || body.tipoVariante || body.variantMode
+  );
+
+  const basePrice = getNumberValue(
     body.precioReferencial,
     body.precio,
     body.price
   );
+
+  const normalizedVariants = normalizeProductVariants(
+    body.variantes || body.variants || [],
+    requestedVariantMode,
+    basePrice
+  );
+
+  const price =
+    requestedVariantMode === "precio_diferente" && normalizedVariants.length > 0
+      ? getMinimumVariantPrice(normalizedVariants)
+      : basePrice;
 
   const serieNombre = getTextValue(
     body.serieNombre,
@@ -355,6 +522,9 @@ const buildProductPayload = (body = {}, options = {}) => {
       body.precioAnterior !== undefined && body.precioAnterior !== ""
         ? Number(body.precioAnterior)
         : null,
+
+    varianteTipo: requestedVariantMode,
+    variantes: normalizedVariants,
 
     categoria: getOptionalObjectId(body.categoria),
     categoriaNombre,
@@ -558,12 +728,22 @@ const populateProduct = (query) => {
     .populate("subcategoria", "nombre slug")
     .populate({
       path: "serie",
-      select: "nombre slug creadores pais",
+      select: "nombre slug creadores pais origenNombre",
       populate: {
         path: "creadores",
         select: "nombre slug tipo"
       }
     })
+    .populate("evento", "titulo nombre slug fechaInicio fechaFin estado")
+    .populate("origen", "nombre slug code")
+    .populate("personajes", "nombre slug tipo");
+};
+
+const populateProductList = (query) => {
+  return query
+    .populate("categoria", "nombre slug")
+    .populate("subcategoria", "nombre slug")
+    .populate("serie", "nombre slug pais origenNombre")
     .populate("evento", "titulo nombre slug fechaInicio fechaFin estado")
     .populate("origen", "nombre slug code")
     .populate("personajes", "nombre slug tipo");
@@ -575,6 +755,29 @@ const applySafeProductListQueryOptions = (query) => {
   }
 
   return query;
+};
+
+const normalizeProductListItem = (product = {}) => {
+  const plainProduct = product?.toObject ? product.toObject() : product;
+
+  return {
+    ...plainProduct,
+    id: plainProduct._id,
+    _id: plainProduct._id,
+
+    categoriaNombre:
+      plainProduct.categoria?.nombre || plainProduct.categoriaNombre || "",
+    subcategoriaNombre:
+      plainProduct.subcategoria?.nombre || plainProduct.subcategoriaNombre || "",
+    serieNombre: plainProduct.serie?.nombre || plainProduct.serieNombre || "",
+    eventoNombre: plainProduct.evento?.titulo || plainProduct.eventoNombre || "",
+    origenNombre: plainProduct.origen?.nombre || plainProduct.origenNombre || "",
+
+    // El listado del admin NO debe transportar imágenes completas.
+    // Las imágenes siguen guardadas en MongoDB y se cargan completas solo en GET /api/products/:id.
+    imagenes: [],
+    imagenesCount: 0
+  };
 };
 
 const getProducts = async (req, res) => {
@@ -634,21 +837,23 @@ const getProducts = async (req, res) => {
     if (esDestacado !== undefined) filter.esDestacado = esDestacado === "true";
 
     const productsQuery = applySafeProductListQueryOptions(
-      populateProduct(Product.find(filter).sort({ _id: -1 }))
+      populateProductList(
+        Product.find(filter)
+          .select(PRODUCT_LIST_SELECT)
+          .sort({ _id: -1 })
+      )
     );
 
     const products = await productsQuery;
 
-    await syncProductsAvailabilityByEvent(products, {
-      persist: false
-    });
-
     res.json({
       message: "Lista de productos obtenida correctamente",
       total: products.length,
-      products
+      products: products.map(normalizeProductListItem)
     });
   } catch (error) {
+    console.error("Error al obtener productos:", error);
+
     res.status(500).json({
       message: "Error al obtener productos",
       error: error.message

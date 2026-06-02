@@ -124,16 +124,23 @@ const shouldReplaceImages = (body = {}, includeImages = false) => {
   );
 };
 
-const populateEvent = (query) => {
-  return query
+const populateEvent = (query, options = {}) => {
+  const includeProducts = options.includeProducts !== false;
+
+  let nextQuery = query
     .populate("categoria", "nombre slug")
     .populate("serie", "nombre slug pais origenNombre")
     .populate("series", "nombre slug pais origenNombre")
-    .populate("origen", "nombre slug code")
-    .populate(
+    .populate("origen", "nombre slug code");
+
+  if (includeProducts) {
+    nextQuery = nextQuery.populate(
       "productos",
-      "nombre slug precio precioReferencial tipo tipoProducto tiposProducto personajesNombre personajeNombre imagenes activo serieNombre eventoNombre"
+      "nombre slug precio precioReferencial tipo tipoProducto tiposProducto personajesNombre personajeNombre activo serieNombre eventoNombre"
     );
+  }
+
+  return nextQuery;
 };
 
 const getSeriesNames = (plainEvent) => {
@@ -160,16 +167,17 @@ const getSeriesNames = (plainEvent) => {
   return [...new Set(names)];
 };
 
-const normalizeEventResponse = (event) => {
+const normalizeEventResponse = (event, options = {}) => {
   const plainEvent = event?.toObject ? event.toObject() : event;
 
   if (!plainEvent) return null;
 
-  const coverImage = getImageSource(plainEvent.imagen);
+  const includeImages = options.includeImages !== false;
+  const coverImage = includeImages ? getImageSource(plainEvent.imagen) : "";
 
-  const carouselImages = normalizeImages(plainEvent.imagenes).filter(
-    (image) => image !== coverImage
-  );
+  const carouselImages = includeImages
+    ? normalizeImages(plainEvent.imagenes).filter((image) => image !== coverImage)
+    : [];
 
   const seriesNombre = getSeriesNames(plainEvent);
 
@@ -415,13 +423,22 @@ const getEvents = async (req, res) => {
     }
 
     const events = await populateEvent(
-      Event.find(filter).sort({ fechaInicio: 1, createdAt: -1 })
+      Event.find(filter)
+        .select("-productos")
+        .sort({ fechaInicio: 1, _id: -1 }),
+      {
+        includeProducts: false
+      }
     );
 
     res.json({
       message: "Lista de eventos obtenida correctamente",
       total: events.length,
-      events: events.map(normalizeEventResponse)
+      events: events.map((event) =>
+        normalizeEventResponse(event, {
+          includeImages: true
+        })
+      )
     });
   } catch (error) {
     console.error("Error al obtener eventos:", error);
@@ -439,7 +456,9 @@ const getEventById = async (req, res) => {
       ? { _id: req.params.id }
       : { slug: req.params.id };
 
-    const event = await populateEvent(Event.findOne(query));
+    const event = await populateEvent(Event.findOne(query), {
+      includeProducts: true
+    });
 
     if (!event) {
       return res.status(404).json({
@@ -493,7 +512,9 @@ const createEvent = async (req, res) => {
       event
     });
 
-    const populatedEvent = await populateEvent(Event.findById(event._id));
+    const populatedEvent = await populateEvent(Event.findById(event._id), {
+      includeProducts: true
+    });
 
     res.status(201).json({
       message: "Evento creado correctamente",
@@ -554,7 +575,9 @@ const updateEvent = async (req, res) => {
       event
     });
 
-    const populatedEvent = await populateEvent(Event.findById(event._id));
+    const populatedEvent = await populateEvent(Event.findById(event._id), {
+      includeProducts: true
+    });
 
     res.json({
       message: "Evento actualizado correctamente",
