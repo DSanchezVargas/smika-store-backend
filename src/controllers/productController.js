@@ -856,10 +856,13 @@ const compactImageForList = (image = {}, productId = "", index = 0, req = null) 
 const normalizeProductListItem = (product = {}, req = null) => {
   const plainProduct = product?.toObject ? product.toObject() : product;
   const productId = plainProduct._id?.toString?.() || plainProduct.id || "";
-  const imagesCount = Array.isArray(plainProduct.imagenes) ? plainProduct.imagenes.length : 0;
-  const firstImage = Array.isArray(plainProduct.imagenes)
-    ? compactImageForList(plainProduct.imagenes[0], productId, 0, req)
-    : null;
+  const rawImages = Array.isArray(plainProduct.imagenes) ? plainProduct.imagenes : [];
+
+  const compactImages = rawImages
+    .map((image, index) => compactImageForList(image, productId, index, req))
+    .filter(Boolean);
+
+  const firstImage = compactImages[0] || null;
 
   return {
     ...plainProduct,
@@ -874,11 +877,13 @@ const normalizeProductListItem = (product = {}, req = null) => {
     eventoNombre: plainProduct.evento?.titulo || plainProduct.eventoNombre || "",
     origenNombre: plainProduct.origen?.nombre || plainProduct.origenNombre || "",
 
-    // El listado no transporta base64 pesado. Si la imagen está guardada como base64,
-    // se expone como URL JPG/PNG desde el backend: /api/products/:id/image/:index.
-    // Para editar, GET /api/products/:id sigue trayendo todas las imágenes completas.
-    imagenes: firstImage ? [firstImage] : [],
-    imagenesCount: imagesCount,
+    // Importante para variantes:
+    // el catálogo público necesita todas las imágenes compactas para poder mostrar
+    // imagenes[variant.imagenIndex]. No se envía base64 pesado: si alguna imagen
+    // antigua está en base64, compactImageForList la expone mediante
+    // /api/products/:id/image/:index.
+    imagenes: compactImages,
+    imagenesCount: rawImages.length,
     imagenPortada: firstImage || null
   };
 };
@@ -943,7 +948,6 @@ const getProducts = async (req, res) => {
       populateProductList(
         Product.find(filter)
           .select(`${PRODUCT_LIST_SELECT} imagenes`)
-          .slice("imagenes", 1)
           .sort({ _id: -1 })
       )
     );
@@ -1208,3 +1212,5 @@ module.exports = {
   updateProduct,
   deleteProduct
 };
+
+//esto es un comentario para probar el deploy automatico de vercel, no tiene ningun proposito en el codigo
