@@ -1,5 +1,8 @@
 const mongoose = require("mongoose");
-const { ensureProductImagesOnCloudinary, assertNoBase64Images } = require("../utils/cloudinaryImageStorage");
+const {
+  ensureProductImagesOnCloudinary,
+  assertNoBase64Images
+} = require("../utils/cloudinaryImageStorage");
 
 const imageSchema = new mongoose.Schema(
   {
@@ -116,6 +119,47 @@ const imageSchema = new mongoose.Schema(
   }
 );
 
+const variantSchema = new mongoose.Schema(
+  {
+    codigo: {
+      type: String,
+      trim: true,
+      default: ""
+    },
+
+    nombre: {
+      type: String,
+      trim: true,
+      required: [true, "El nombre de la opción es obligatorio"]
+    },
+
+    precio: {
+      type: Number,
+      min: [0, "El precio de la opción no puede ser negativo"],
+      default: 0
+    },
+
+    stock: {
+      type: Number,
+      min: [0, "El stock de la opción no puede ser negativo"],
+      default: 0
+    },
+
+    activa: {
+      type: Boolean,
+      default: true
+    },
+
+    orden: {
+      type: Number,
+      default: 0
+    }
+  },
+  {
+    _id: false
+  }
+);
+
 const productSchema = new mongoose.Schema(
   {
     nombre: {
@@ -153,6 +197,17 @@ const productSchema = new mongoose.Schema(
     precioAnterior: {
       type: Number,
       default: null
+    },
+
+    varianteTipo: {
+      type: String,
+      enum: ["sin_variantes", "precio_igual", "precio_diferente"],
+      default: "sin_variantes"
+    },
+
+    variantes: {
+      type: [variantSchema],
+      default: []
     },
 
     imagenes: {
@@ -322,6 +377,11 @@ const productSchema = new mongoose.Schema(
   }
 );
 
+productSchema.index({ activo: 1, _id: -1 });
+productSchema.index({ serie: 1, activo: 1, _id: -1 });
+productSchema.index({ evento: 1, activo: 1, _id: -1 });
+productSchema.index({ categoria: 1, activo: 1, _id: -1 });
+
 productSchema.virtual("serieTexto").get(function () {
   return this.serieNombre;
 });
@@ -334,6 +394,42 @@ productSchema.virtual("origenTexto").get(function () {
   return this.origenNombre;
 });
 
+productSchema.pre("validate", function normalizeVariantsBeforeValidate(next) {
+  if (!["sin_variantes", "precio_igual", "precio_diferente"].includes(this.varianteTipo)) {
+    this.varianteTipo = "sin_variantes";
+  }
+
+  if (this.varianteTipo === "sin_variantes") {
+    this.variantes = [];
+    return next();
+  }
+
+  const basePrice = Number(this.precioReferencial || this.precio || 0);
+
+  this.variantes = Array.isArray(this.variantes)
+    ? this.variantes
+        .map((variant, index) => {
+          const nombre = variant?.nombre?.toString().trim();
+
+          if (!nombre) return null;
+
+          return {
+            codigo: variant.codigo || `opcion-${index + 1}`,
+            nombre,
+            precio:
+              this.varianteTipo === "precio_diferente"
+                ? Number(variant.precio || 0)
+                : basePrice,
+            stock: Number(variant.stock || 0),
+            activa: variant.activa !== false,
+            orden: Number(variant.orden ?? index)
+          };
+        })
+        .filter(Boolean)
+    : [];
+
+  next();
+});
 
 productSchema.pre("save", async function preventBase64Images(next) {
   try {
