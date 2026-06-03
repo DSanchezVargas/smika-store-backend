@@ -2,6 +2,7 @@ const express = require("express");
 
 const {
   getProducts,
+  getProductImage,
   getProductById,
   createProduct,
   updateProduct,
@@ -20,6 +21,7 @@ const { authorizeRoles } = require("../middlewares/roleMiddleware");
 const router = express.Router();
 
 router.get("/", getProducts);
+router.get("/:id/image/:index", getProductImage);
 router.get("/:id", getProductById);
 
 router.post(

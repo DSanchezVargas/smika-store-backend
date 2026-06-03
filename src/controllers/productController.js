@@ -768,8 +768,86 @@ const applySafeProductListQueryOptions = (query) => {
   return query;
 };
 
-const normalizeProductListItem = (product = {}) => {
+const getRequestBaseUrl = (req) => {
+  const forwardedProtocol = req.headers["x-forwarded-proto"];
+  const protocol = Array.isArray(forwardedProtocol)
+    ? forwardedProtocol[0]
+    : (forwardedProtocol || req.protocol || "https").split(",")[0].trim();
+
+  const forwardedHost = req.headers["x-forwarded-host"];
+  const host = Array.isArray(forwardedHost)
+    ? forwardedHost[0]
+    : (forwardedHost || req.get("host") || "").split(",")[0].trim();
+
+  return `${protocol}://${host}`;
+};
+
+const getProductImageEndpoint = (req, productId, index = 0) => {
+  if (!req || !productId) return "";
+
+  return `${getRequestBaseUrl(req)}/api/products/${productId}/image/${index}`;
+};
+
+const parseDataImage = (source = "") => {
+  if (typeof source !== "string") return null;
+
+  const match = source.match(/^data:(image\/[a-zA-Z0-9.+-]+);base64,(.+)$/);
+
+  if (!match) return null;
+
+  return {
+    mime: match[1],
+    buffer: Buffer.from(match[2], "base64")
+  };
+};
+
+const compactImageForList = (image = {}, productId = "", index = 0, req = null) => {
+  const source = getImageSource(image);
+
+  if (!source) return null;
+
+  const isBase64Image = source.startsWith("data:image");
+  const displaySource = isBase64Image
+    ? getProductImageEndpoint(req, productId, index)
+    : source;
+
+  if (!displaySource) return null;
+
+  if (typeof image === "string") {
+    return {
+      url: displaySource,
+      preview: displaySource,
+      finalPreview: displaySource,
+      storage: isBase64Image ? "backend-image" : "external"
+    };
+  }
+
+  return {
+    url: displaySource,
+    preview: displaySource,
+    finalPreview: displaySource,
+    publicId: image.publicId || "",
+    name: image.name || image.nombre || image.originalName || "",
+    originalName: image.originalName || image.name || "",
+    storage: isBase64Image
+      ? "backend-image"
+      : image.storage || (source.startsWith("data:") ? "local-data-url" : "external"),
+    size: Number(image.size || 0),
+    finalSize: Number(image.finalSize || image.size || 0),
+    width: Number(image.width || image.finalWidth || 0),
+    height: Number(image.height || image.finalHeight || 0),
+    finalWidth: Number(image.finalWidth || image.width || 0),
+    finalHeight: Number(image.finalHeight || image.height || 0)
+  };
+};
+
+const normalizeProductListItem = (product = {}, req = null) => {
   const plainProduct = product?.toObject ? product.toObject() : product;
+  const productId = plainProduct._id?.toString?.() || plainProduct.id || "";
+  const imagesCount = Array.isArray(plainProduct.imagenes) ? plainProduct.imagenes.length : 0;
+  const firstImage = Array.isArray(plainProduct.imagenes)
+    ? compactImageForList(plainProduct.imagenes[0], productId, 0, req)
+    : null;
 
   return {
     ...plainProduct,
@@ -784,10 +862,12 @@ const normalizeProductListItem = (product = {}) => {
     eventoNombre: plainProduct.evento?.titulo || plainProduct.eventoNombre || "",
     origenNombre: plainProduct.origen?.nombre || plainProduct.origenNombre || "",
 
-    // El listado del admin NO debe transportar imágenes completas.
-    // Las imágenes siguen guardadas en MongoDB y se cargan completas solo en GET /api/products/:id.
-    imagenes: [],
-    imagenesCount: 0
+    // El listado no transporta base64 pesado. Si la imagen está guardada como base64,
+    // se expone como URL JPG/PNG desde el backend: /api/products/:id/image/:index.
+    // Para editar, GET /api/products/:id sigue trayendo todas las imágenes completas.
+    imagenes: firstImage ? [firstImage] : [],
+    imagenesCount: imagesCount,
+    imagenPortada: firstImage || null
   };
 };
 
@@ -850,7 +930,8 @@ const getProducts = async (req, res) => {
     const productsQuery = applySafeProductListQueryOptions(
       populateProductList(
         Product.find(filter)
-          .select(PRODUCT_LIST_SELECT)
+          .select(`${PRODUCT_LIST_SELECT} imagenes`)
+          .slice("imagenes", 1)
           .sort({ _id: -1 })
       )
     );
@@ -860,13 +941,68 @@ const getProducts = async (req, res) => {
     res.json({
       message: "Lista de productos obtenida correctamente",
       total: products.length,
-      products: products.map(normalizeProductListItem)
+      products: products.map((product) => normalizeProductListItem(product, req))
     });
   } catch (error) {
     console.error("Error al obtener productos:", error);
 
     res.status(500).json({
       message: "Error al obtener productos",
+      error: error.message
+    });
+  }
+};
+
+const getProductImage = async (req, res) => {
+  try {
+    const { id, index = 0 } = req.params;
+
+    if (!isValidObjectId(id)) {
+      return res.status(400).json({
+        message: "ID de producto inválido"
+      });
+    }
+
+    const imageIndex = Math.max(Number(index || 0), 0);
+    const product = await Product.findById(id).select("imagenes nombre").lean();
+
+    if (!product) {
+      return res.status(404).json({
+        message: "Producto no encontrado"
+      });
+    }
+
+    const image = Array.isArray(product.imagenes) ? product.imagenes[imageIndex] : null;
+    const source = getImageSource(image);
+
+    if (!source) {
+      return res.status(404).json({
+        message: "Imagen no encontrada"
+      });
+    }
+
+    if (/^https?:\/\//i.test(source)) {
+      return res.redirect(source);
+    }
+
+    const parsed = parseDataImage(source);
+
+    if (!parsed) {
+      return res.status(404).json({
+        message: "La imagen no está disponible como archivo"
+      });
+    }
+
+    res.setHeader("Content-Type", parsed.mime || "image/jpeg");
+    res.setHeader("Cache-Control", "public, max-age=604800, immutable");
+    res.setHeader("X-Smika-Image-Source", "mongodb-base64");
+
+    return res.send(parsed.buffer);
+  } catch (error) {
+    console.error("Error al obtener imagen de producto:", error);
+
+    return res.status(500).json({
+      message: "Error al obtener imagen de producto",
       error: error.message
     });
   }
@@ -1054,6 +1190,7 @@ const deleteProduct = async (req, res) => {
 
 module.exports = {
   getProducts,
+  getProductImage,
   getProductById,
   createProduct,
   updateProduct,
