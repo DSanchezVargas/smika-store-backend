@@ -231,11 +231,23 @@ const normalizeProductVariants = (
           ? getNumberValue(variant?.precio, variant?.price, variant?.precioReferencial)
           : Number(basePrice || 0);
 
+      const rawImagenIndex = getNumberValue(
+        variant?.imagenIndex,
+        variant?.imageIndex,
+        variant?.selectedImageIndex
+      );
+
+      const imagenIndex =
+        Number.isFinite(rawImagenIndex) && rawImagenIndex >= 0
+          ? Math.floor(rawImagenIndex)
+          : 0;
+
       return {
         codigo,
         nombre,
         precio: Number(variantPrice || 0),
         stock: Number(variant?.stock || 0),
+        imagenIndex,
         activa: variant?.activa !== undefined ? Boolean(variant.activa) : true,
         orden: Number(variant?.orden ?? index)
       };
