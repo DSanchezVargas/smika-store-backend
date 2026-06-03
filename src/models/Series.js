@@ -1,4 +1,5 @@
 const mongoose = require("mongoose");
+const { ensureStringImagesOnCloudinary, assertNoBase64Images } = require("../utils/cloudinaryImageStorage");
 
 const seriesSchema = new mongoose.Schema(
   {
@@ -128,6 +129,32 @@ const seriesSchema = new mongoose.Schema(
     timestamps: true
   }
 );
+
+
+seriesSchema.pre("save", async function preventBase64Images(next) {
+  try {
+    const uploadedImages = await ensureStringImagesOnCloudinary(
+      {
+        imagen: this.imagen,
+        imagenes: this.imagenes
+      },
+      {
+        folder: "smika/series",
+        title: this.nombre || this.slug || "serie",
+        ownerId: this._id
+      }
+    );
+
+    this.imagen = uploadedImages.imagen;
+    this.imagenes = uploadedImages.imagenes;
+
+    assertNoBase64Images(this.imagen, "Series.imagen");
+    assertNoBase64Images(this.imagenes, "Series.imagenes");
+    next();
+  } catch (error) {
+    next(error);
+  }
+});
 
 seriesSchema.set("toJSON", {
   virtuals: true

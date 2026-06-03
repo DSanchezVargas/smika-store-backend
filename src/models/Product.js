@@ -1,4 +1,5 @@
 const mongoose = require("mongoose");
+const { ensureProductImagesOnCloudinary, assertNoBase64Images } = require("../utils/cloudinaryImageStorage");
 
 const imageSchema = new mongoose.Schema(
   {
@@ -321,12 +322,6 @@ const productSchema = new mongoose.Schema(
   }
 );
 
-
-productSchema.index({ activo: 1, _id: -1 });
-productSchema.index({ serie: 1, activo: 1, _id: -1 });
-productSchema.index({ evento: 1, activo: 1, _id: -1 });
-productSchema.index({ categoria: 1, activo: 1, _id: -1 });
-
 productSchema.virtual("serieTexto").get(function () {
   return this.serieNombre;
 });
@@ -337,6 +332,24 @@ productSchema.virtual("eventoTexto").get(function () {
 
 productSchema.virtual("origenTexto").get(function () {
   return this.origenNombre;
+});
+
+
+productSchema.pre("save", async function preventBase64Images(next) {
+  try {
+    if (Array.isArray(this.imagenes) && this.imagenes.length > 0) {
+      this.imagenes = await ensureProductImagesOnCloudinary(this.imagenes, {
+        folder: "smika/products",
+        title: this.nombre || this.slug || "producto",
+        ownerId: this._id
+      });
+    }
+
+    assertNoBase64Images(this.imagenes, "Product.imagenes");
+    next();
+  } catch (error) {
+    next(error);
+  }
 });
 
 productSchema.set("toJSON", {

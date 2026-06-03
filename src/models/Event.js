@@ -1,4 +1,5 @@
 const mongoose = require("mongoose");
+const { ensureStringImagesOnCloudinary, assertNoBase64Images } = require("../utils/cloudinaryImageStorage");
 
 const EVENT_STATES = ["proximo", "preventa", "activo", "finalizado", "cancelado"];
 
@@ -149,6 +150,32 @@ eventSchema.pre("validate", function syncLegacySeriesFields(next) {
   }
 
   next();
+});
+
+
+eventSchema.pre("save", async function preventBase64Images(next) {
+  try {
+    const uploadedImages = await ensureStringImagesOnCloudinary(
+      {
+        imagen: this.imagen,
+        imagenes: this.imagenes
+      },
+      {
+        folder: "smika/events",
+        title: this.titulo || this.slug || "evento",
+        ownerId: this._id
+      }
+    );
+
+    this.imagen = uploadedImages.imagen;
+    this.imagenes = uploadedImages.imagenes;
+
+    assertNoBase64Images(this.imagen, "Event.imagen");
+    assertNoBase64Images(this.imagenes, "Event.imagenes");
+    next();
+  } catch (error) {
+    next(error);
+  }
 });
 
 eventSchema.set("toJSON", {
