@@ -145,6 +145,12 @@ const variantSchema = new mongoose.Schema(
       default: 0
     },
 
+    imagenIndex: {
+      type: Number,
+      min: [0, "El índice de imagen no puede ser negativo"],
+      default: 0
+    },
+
     activa: {
       type: Boolean,
       default: true
@@ -405,6 +411,7 @@ productSchema.pre("validate", function normalizeVariantsBeforeValidate(next) {
   }
 
   const basePrice = Number(this.precioReferencial || this.precio || 0);
+  const totalImages = Array.isArray(this.imagenes) ? this.imagenes.length : 0;
 
   this.variantes = Array.isArray(this.variantes)
     ? this.variantes
@@ -412,6 +419,16 @@ productSchema.pre("validate", function normalizeVariantsBeforeValidate(next) {
           const nombre = variant?.nombre?.toString().trim();
 
           if (!nombre) return null;
+
+          let imagenIndex = Number(variant.imagenIndex || 0);
+
+          if (!Number.isFinite(imagenIndex) || imagenIndex < 0) {
+            imagenIndex = 0;
+          }
+
+          if (totalImages > 0 && imagenIndex > totalImages - 1) {
+            imagenIndex = 0;
+          }
 
           return {
             codigo: variant.codigo || `opcion-${index + 1}`,
@@ -421,6 +438,7 @@ productSchema.pre("validate", function normalizeVariantsBeforeValidate(next) {
                 ? Number(variant.precio || 0)
                 : basePrice,
             stock: Number(variant.stock || 0),
+            imagenIndex,
             activa: variant.activa !== false,
             orden: Number(variant.orden ?? index)
           };
