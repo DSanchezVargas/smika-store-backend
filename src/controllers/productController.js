@@ -583,7 +583,18 @@ const buildProductPayload = (body = {}, options = {}) => {
   }
 
   if (shouldReplaceImages(body, options.includeImages === true)) {
-    payload.imagenes = normalizeImages(body.imagenes || []);
+    const normalizedImages = normalizeImages(body.imagenes || []);
+    const canClearImages =
+      body.borrarImagenes === true ||
+      body.clearImages === true ||
+      body.limpiarImagenes === true;
+
+    // Protección: al editar, si el frontend llega con imagenesTouched pero sin imágenes,
+    // NO se reemplaza el arreglo existente. Así evitamos borrar imágenes guardadas
+    // por abrir un producto desde una lista liviana o por un fallo de carga.
+    if (options.includeImages === true || normalizedImages.length > 0 || canClearImages) {
+      payload.imagenes = normalizedImages;
+    }
   }
 
   return payload;
