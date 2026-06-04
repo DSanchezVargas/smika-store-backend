@@ -1,0 +1,33 @@
+{
+  "date": "2026-06-03T04:54:16.352Z",
+  "execute": true,
+  "limit": 0,
+  "base64Found": 81,
+  "uploaded": 81,
+  "collections": [
+    {
+      "collection": "products",
+      "label": "productos",
+      "reviewed": 46,
+      "changedDocs": 34,
+      "migratedDocs": 34,
+      "skippedDocs": 12
+    },
+    {
+      "collection": "series",
+      "label": "series",
+      "reviewed": 8,
+      "changedDocs": 5,
+      "migratedDocs": 5,
+      "skippedDocs": 3
+    },
+    {
+      "collection": "events",
+      "label": "eventos",
+      "reviewed": 5,
+      "changedDocs": 2,
+      "migratedDocs": 2,
+      "skippedDocs": 3
+    }
+  ]
+}

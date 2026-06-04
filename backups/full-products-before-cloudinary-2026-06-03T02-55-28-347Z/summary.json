@@ -1,0 +1,10 @@
+{
+  "fecha": "2026-06-03T03:06:36.669Z",
+  "productos": 46,
+  "imagenesTotales": 74,
+  "imagenesBase64": 62,
+  "imagenesCloudinary": 12,
+  "imagenesVacias": 0,
+  "pesoTextoBase64Aproximado": "17.04 MB",
+  "backupFile": "C:\\Users\\USER\\Smika-Store\\Smika-Store-Backend\\backups\\full-products-before-cloudinary-2026-06-03T02-55-28-347Z\\products-full-backup.json"
+}

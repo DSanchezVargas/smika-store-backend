@@ -1,0 +1,11 @@
+{
+  "mode": "dry-run",
+  "productsReviewed": 3,
+  "productsWithBase64": 3,
+  "migratedProducts": 0,
+  "skippedProducts": 0,
+  "base64ImagesFound": 3,
+  "uploadedImages": 0,
+  "failures": [],
+  "backupFile": "C:\\Users\\USER\\Smika-Store\\Smika-Store-Backend\\backups\\cloudinary-migration-2026-06-03T02-11-42-940Z\\migration-backup.json"
+}

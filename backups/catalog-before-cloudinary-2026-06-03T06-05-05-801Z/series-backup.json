@@ -1,0 +1,258 @@
+[
+{
+  "_id": "6a1a6fa0dfa3267ffaf05aa9",
+  "nombre": "La Ventura del Caballero Blanco",
+  "slug": "la-ventura-del-caballero-blanco",
+  "descripcion": "Los reinos de Leracal y Arnata sellan una alianza con un matrimonio. Tei, proveniente del reino helado, se ofrece a ser parte del pacto y viaja a las cálidas tierras donde conocerá al joven príncipe Shuraka. Entre deber y guerra, sus corazones comienzan a palpitar.",
+  "imagen": "https://res.cloudinary.com/dufqercez/image/upload/v1780461563/smika/series/la-ventura-del-caballero-blanco-6a1a6fa0dfa3267ffaf05aa9-1-1780461563415.jpg",
+  "imagenes": [
+    "https://res.cloudinary.com/dufqercez/image/upload/v1780461564/smika/series/la-ventura-del-caballero-blanco-6a1a6fa0dfa3267ffaf05aa9-2-1780461564776.jpg",
+    "https://res.cloudinary.com/dufqercez/image/upload/v1780461565/smika/series/la-ventura-del-caballero-blanco-6a1a6fa0dfa3267ffaf05aa9-3-1780461565442.jpg",
+    "https://res.cloudinary.com/dufqercez/image/upload/v1780461565/smika/series/la-ventura-del-caballero-blanco-6a1a6fa0dfa3267ffaf05aa9-4-1780461565995.jpg"
+  ],
+  "categoriaPrincipal": null,
+  "categoriaPrincipalNombre": "Manhwa",
+  "subcategoria": null,
+  "subcategoriaNombre": "",
+  "origen": null,
+  "origenNombre": "Corea",
+  "pais": "KR",
+  "creadores": [
+    "6a1c0328a5876a2b0884aaff"
+  ],
+  "creadoresNombre": [
+    "Brothers without a tomorrow"
+  ],
+  "genero": "BL",
+  "tipo": "Manhwa",
+  "destacada": true,
+  "activa": true,
+  "activo": true,
+  "orden": 1,
+  "createdAt": "2026-05-30T05:03:28.793Z",
+  "updatedAt": "2026-06-02T09:01:23.478Z",
+  "__v": 3,
+  "categoriaNombre": "Manhwa"
+},
+{
+  "_id": "6a1bcf098e99fda16a66bec2",
+  "nombre": "Honey Bear",
+  "slug": "honey-bear",
+  "descripcion": "Sigue la vida de Mun Geon-woo, un joven de 21 años, alto y de hombros anchos, pero que carece de experiencia sexual y está principalmente enfocado en el ejercicio. Un día, su vida cambia cuando conoce a Yoo Ha-jin, el dueño de una panadería que huele a mantequilla. Geon-woo, de corazón puro, queda prendado de la encantadora personalidad de Ha-jin, lo que da inicio a una serie de eventos románticos y divertidos entre ellos.",
+  "imagen": "https://res.cloudinary.com/dufqercez/image/upload/v1780461573/smika/series/honey-bear-6a1bcf098e99fda16a66bec2-1-1780461573196.jpg",
+  "imagenes": [],
+  "categoriaPrincipal": null,
+  "categoriaPrincipalNombre": "Manhwa",
+  "categoriaNombre": "Manhwa",
+  "subcategoria": null,
+  "subcategoriaNombre": "",
+  "origen": null,
+  "origenNombre": "Corea",
+  "pais": "KR",
+  "creadores": [],
+  "creadoresNombre": [
+    "Ruyoung"
+  ],
+  "genero": "BL",
+  "tipo": "Manhwa",
+  "destacada": true,
+  "activa": true,
+  "activo": true,
+  "orden": 2,
+  "createdAt": "2026-05-31T06:02:49.419Z",
+  "updatedAt": "2026-05-31T06:02:49.419Z",
+  "__v": 0
+},
+{
+  "_id": "6a1c0a52a5876a2b0884aba2",
+  "nombre": "Hongsil Quest",
+  "slug": "hongsil-quest",
+  "descripcion": "Serie creada rápidamente desde eventos.",
+  "imagen": "https://res.cloudinary.com/dufqercez/image/upload/v1780462358/smika/series/hongsil-quest-6a1c0a52a5876a2b0884aba2-1-1780462357766.jpg",
+  "imagenes": [
+    "https://res.cloudinary.com/dufqercez/image/upload/v1780462359/smika/series/hongsil-quest-6a1c0a52a5876a2b0884aba2-2-1780462359563.jpg"
+  ],
+  "categoriaPrincipal": null,
+  "categoriaPrincipalNombre": "Eventos",
+  "categoriaNombre": "Eventos",
+  "subcategoria": null,
+  "subcategoriaNombre": "",
+  "origen": null,
+  "origenNombre": "Corea",
+  "pais": "KR",
+  "creadores": [
+    "6a1e9c40ecd6896c8b637b9e"
+  ],
+  "creadoresNombre": [
+    "soop2rang"
+  ],
+  "genero": "BL",
+  "tipo": "Eventos",
+  "destacada": false,
+  "activa": true,
+  "activo": true,
+  "orden": 0,
+  "createdAt": "2026-05-31T10:15:46.434Z",
+  "updatedAt": "2026-06-02T09:02:57.092Z",
+  "__v": 2
+},
+{
+  "_id": "6a1e7bad79ecf236ac714c4c",
+  "nombre": "Solicitud Especial Para Recién Casados",
+  "slug": "solicitud-especial-para-recien-casados",
+  "descripcion": "",
+  "imagen": "https://res.cloudinary.com/dufqercez/image/upload/v1780462370/smika/series/solicitud-especial-para-recien-casados-6a1e7bad79ecf236ac714c4c-1-1780462370118.jpg",
+  "imagenes": [
+    "https://res.cloudinary.com/dufqercez/image/upload/v1780462371/smika/series/solicitud-especial-para-recien-casados-6a1e7bad79ecf236ac714c4c-2-1780462371380.jpg",
+    "https://res.cloudinary.com/dufqercez/image/upload/v1780462371/smika/series/solicitud-especial-para-recien-casados-6a1e7bad79ecf236ac714c4c-3-1780462372134.jpg",
+    "https://res.cloudinary.com/dufqercez/image/upload/v1780462372/smika/series/solicitud-especial-para-recien-casados-6a1e7bad79ecf236ac714c4c-4-1780462372883.jpg"
+  ],
+  "categoriaPrincipal": null,
+  "categoriaPrincipalNombre": "Manhwa",
+  "categoriaNombre": "Manhwa",
+  "subcategoria": null,
+  "subcategoriaNombre": "",
+  "origen": null,
+  "origenNombre": "Corea",
+  "pais": "KR",
+  "creadores": [
+    "6a1e9b8fecd6896c8b637b20"
+  ],
+  "creadoresNombre": [
+    "Mr. Blue"
+  ],
+  "genero": "BL",
+  "tipo": "Manhwa",
+  "destacada": false,
+  "activa": true,
+  "activo": true,
+  "orden": 0,
+  "createdAt": "2026-06-02T06:43:57.616Z",
+  "updatedAt": "2026-06-02T09:01:07.756Z",
+  "__v": 1
+},
+{
+  "_id": "6a1e8f1f8b2a1eb3b3b77717",
+  "nombre": "Toxina",
+  "slug": "toxina",
+  "descripcion": "",
+  "imagen": "https://res.cloudinary.com/dufqercez/image/upload/v1780462378/smika/series/toxina-6a1e8f1f8b2a1eb3b3b77717-1-1780462378344.jpg",
+  "imagenes": [
+    "https://res.cloudinary.com/dufqercez/image/upload/v1780462379/smika/series/toxina-6a1e8f1f8b2a1eb3b3b77717-2-1780462379462.jpg",
+    "https://res.cloudinary.com/dufqercez/image/upload/v1780462379/smika/series/toxina-6a1e8f1f8b2a1eb3b3b77717-3-1780462380086.jpg",
+    "https://res.cloudinary.com/dufqercez/image/upload/v1780462380/smika/series/toxina-6a1e8f1f8b2a1eb3b3b77717-4-1780462380709.jpg"
+  ],
+  "categoriaPrincipal": null,
+  "categoriaPrincipalNombre": "Manhwa",
+  "categoriaNombre": "Manhwa",
+  "subcategoria": null,
+  "subcategoriaNombre": "",
+  "origen": null,
+  "origenNombre": "Corea",
+  "pais": "KR",
+  "creadores": [
+    "6a1e9b8fecd6896c8b637b20"
+  ],
+  "creadoresNombre": [
+    "Mr. Blue"
+  ],
+  "genero": "BL",
+  "tipo": "Manhwa",
+  "destacada": false,
+  "activa": true,
+  "activo": true,
+  "orden": 0,
+  "createdAt": "2026-06-02T08:06:55.685Z",
+  "updatedAt": "2026-06-02T09:00:52.261Z",
+  "__v": 1
+},
+{
+  "_id": "6a1e91148b2a1eb3b3b7785c",
+  "nombre": "LA CAMA DE LOS 18",
+  "slug": "la-cama-de-los-18",
+  "descripcion": "",
+  "imagen": "https://res.cloudinary.com/dufqercez/image/upload/v1780462386/smika/series/la-cama-de-los-18-6a1e91148b2a1eb3b3b7785c-1-1780462386652.jpg",
+  "imagenes": [
+    "https://res.cloudinary.com/dufqercez/image/upload/v1780462387/smika/series/la-cama-de-los-18-6a1e91148b2a1eb3b3b7785c-2-1780462387938.jpg"
+  ],
+  "categoriaPrincipal": null,
+  "categoriaPrincipalNombre": "Manhwa",
+  "categoriaNombre": "Manhwa",
+  "subcategoria": null,
+  "subcategoriaNombre": "",
+  "origen": null,
+  "origenNombre": "Corea",
+  "pais": "KR",
+  "creadores": [],
+  "creadoresNombre": [
+    "Mr. Blue"
+  ],
+  "genero": "BL",
+  "tipo": "Manhwa",
+  "destacada": true,
+  "activa": true,
+  "activo": true,
+  "orden": 0,
+  "createdAt": "2026-06-02T08:15:16.370Z",
+  "updatedAt": "2026-06-02T08:23:05.113Z",
+  "__v": 1
+},
+{
+  "_id": "6a1e97598b2a1eb3b3b77e4d",
+  "nombre": "Perro y Pájaro",
+  "slug": "perro-y-pajaro",
+  "descripcion": "Serie creada rápidamente desde eventos.",
+  "imagen": "",
+  "imagenes": [],
+  "categoriaPrincipal": null,
+  "categoriaPrincipalNombre": "Series",
+  "categoriaNombre": "Series",
+  "subcategoria": null,
+  "subcategoriaNombre": "",
+  "origen": null,
+  "origenNombre": "Corea",
+  "pais": "KR",
+  "creadores": [
+    "6a1e9b8fecd6896c8b637b20"
+  ],
+  "creadoresNombre": [
+    "Mr. Blue"
+  ],
+  "genero": "BL",
+  "tipo": "Series",
+  "destacada": false,
+  "activa": true,
+  "activo": true,
+  "orden": 0,
+  "createdAt": "2026-06-02T08:42:01.370Z",
+  "updatedAt": "2026-06-02T09:05:03.076Z",
+  "__v": 1
+},
+{
+  "_id": "6a1e98828b2a1eb3b3b77f89",
+  "nombre": "HYUNG´S OMEGA",
+  "slug": "hyungs-omega",
+  "descripcion": "Serie creada rápidamente desde eventos.",
+  "imagen": "https://res.cloudinary.com/dufqercez/image/upload/v1780462391/smika/series/hyung-s-omega-6a1e98828b2a1eb3b3b77f89-1-1780462391760.jpg",
+  "imagenes": [],
+  "categoriaPrincipal": null,
+  "categoriaPrincipalNombre": "Series",
+  "categoriaNombre": "Series",
+  "subcategoria": null,
+  "subcategoriaNombre": "",
+  "origen": null,
+  "origenNombre": "Corea",
+  "pais": "KR",
+  "creadores": [],
+  "creadoresNombre": [],
+  "genero": "BL",
+  "tipo": "Series",
+  "destacada": false,
+  "activa": true,
+  "activo": true,
+  "orden": 0,
+  "createdAt": "2026-06-02T08:46:58.430Z",
+  "updatedAt": "2026-06-02T08:53:32.661Z",
+  "__v": 0
+}
+]

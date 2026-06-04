@@ -197,6 +197,31 @@ const createVariantCode = (text = "", index = 0) => {
   return slug || `opcion-${index + 1}`;
 };
 
+const buildUniqueProductSlug = async (name = "", ignoreProductId = null) => {
+  const baseSlug = createSlug(name) || `producto-${Date.now()}`;
+  let candidateSlug = baseSlug;
+  let counter = 2;
+
+  while (counter < 1000) {
+    const filter = { slug: candidateSlug };
+
+    if (ignoreProductId && isValidObjectId(ignoreProductId)) {
+      filter._id = { $ne: ignoreProductId };
+    }
+
+    const exists = await Product.exists(filter);
+
+    if (!exists) {
+      return candidateSlug;
+    }
+
+    candidateSlug = `${baseSlug}-${counter}`;
+    counter += 1;
+  }
+
+  return `${baseSlug}-${Date.now()}`;
+};
+
 const normalizeProductVariants = (
   variants = [],
   variantMode = "sin_variantes",
@@ -1063,15 +1088,7 @@ const createProduct = async (req, res) => {
 
     await applyAutomaticAvailabilityToPayload(payload);
 
-    const slug = createSlug(payload.nombre);
-
-    const productExists = await Product.findOne({ slug });
-
-    if (productExists) {
-      return res.status(400).json({
-        message: "Este producto ya existe"
-      });
-    }
+    const slug = await buildUniqueProductSlug(payload.nombre);
 
     const product = await Product.create({
       ...payload,
@@ -1119,21 +1136,14 @@ const updateProduct = async (req, res) => {
     const previousDisponibilidad = product.disponibilidad;
 
     if (payload.nombre) {
-      const slug = createSlug(payload.nombre);
-
-      const duplicatedProduct = await Product.findOne({
-        slug,
-        _id: { $ne: product._id }
-      });
-
-      if (duplicatedProduct) {
-        return res.status(400).json({
-          message: "Ya existe otro producto con ese nombre"
-        });
-      }
+      const previousName = product.nombre?.toString().trim() || "";
+      const nextName = payload.nombre.toString().trim();
 
       product.nombre = payload.nombre;
-      product.slug = slug;
+
+      if (nextName && nextName !== previousName) {
+        product.slug = await buildUniqueProductSlug(payload.nombre, product._id);
+      }
     }
 
     Object.entries(payload).forEach(([key, value]) => {
@@ -1212,5 +1222,3 @@ module.exports = {
   updateProduct,
   deleteProduct
 };
-
-//esto es un comentario para probar el deploy automatico de vercel, no tiene ningun proposito en el codigo

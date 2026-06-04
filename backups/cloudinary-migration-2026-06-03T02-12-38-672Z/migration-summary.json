@@ -1,0 +1,11 @@
+{
+  "mode": "execute",
+  "productsReviewed": 3,
+  "productsWithBase64": 3,
+  "migratedProducts": 3,
+  "skippedProducts": 0,
+  "base64ImagesFound": 3,
+  "uploadedImages": 3,
+  "failures": [],
+  "backupFile": "C:\\Users\\USER\\Smika-Store\\Smika-Store-Backend\\backups\\cloudinary-migration-2026-06-03T02-12-38-672Z\\migration-backup.json"
+}

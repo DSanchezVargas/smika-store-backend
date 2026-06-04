@@ -1,0 +1,50 @@
+{
+  "date": "2026-06-03T05:46:45.224Z",
+  "backupDir": "C:\\Users\\USER\\Smika-Store\\Smika-Store-Backend\\backups\\catalog-before-cloudinary-2026-06-03T05-46-37-607Z",
+  "documents": 60,
+  "imagesTotal": 107,
+  "imagesBase64": 0,
+  "imagesCloudinary": 107,
+  "imagesExternal": 0,
+  "imagesEmpty": 0,
+  "base64TextBytes": 0,
+  "collections": [
+    {
+      "collection": "products",
+      "label": "productos",
+      "documents": 47,
+      "imagesTotal": 75,
+      "imagesBase64": 0,
+      "imagesCloudinary": 75,
+      "imagesExternal": 0,
+      "imagesEmpty": 0,
+      "base64TextBytes": 0,
+      "file": "C:\\Users\\USER\\Smika-Store\\Smika-Store-Backend\\backups\\catalog-before-cloudinary-2026-06-03T05-46-37-607Z\\products-backup.json"
+    },
+    {
+      "collection": "series",
+      "label": "series",
+      "documents": 8,
+      "imagesTotal": 18,
+      "imagesBase64": 0,
+      "imagesCloudinary": 18,
+      "imagesExternal": 0,
+      "imagesEmpty": 0,
+      "base64TextBytes": 0,
+      "file": "C:\\Users\\USER\\Smika-Store\\Smika-Store-Backend\\backups\\catalog-before-cloudinary-2026-06-03T05-46-37-607Z\\series-backup.json"
+    },
+    {
+      "collection": "events",
+      "label": "eventos",
+      "documents": 5,
+      "imagesTotal": 14,
+      "imagesBase64": 0,
+      "imagesCloudinary": 14,
+      "imagesExternal": 0,
+      "imagesEmpty": 0,
+      "base64TextBytes": 0,
+      "file": "C:\\Users\\USER\\Smika-Store\\Smika-Store-Backend\\backups\\catalog-before-cloudinary-2026-06-03T05-46-37-607Z\\events-backup.json"
+    }
+  ],
+  "base64TextMB": "0.00 MB"
+}
